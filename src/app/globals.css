@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+@theme {
+    --color-safetube-bg: #0a0a0f;
+    --color-safetube-card: #12121a;
+    --color-safetube-border: #1e1e2e;
+    --color-safetube-surface: #181825;
+    --color-safetube-text: #e4e4ef;
+    --color-safetube-muted: #6e6e8a;
+    --color-safetube-accent: #6366f1;
+    --color-safetube-accent-hover: #818cf8;
+    --color-safetube-success: #34d399;
+    --color-safetube-danger: #f87171;
+    --color-safetube-warning: #fbbf24;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    background-color: var(--color-safetube-bg);
+    color: var(--color-safetube-text);
+    overflow-x: hidden;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-safetube-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-safetube-border);
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-safetube-muted);
+}
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+    }
+
+    50% {
+        box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.4s ease-out;
+}
+
+.animate-scale-in {
+    animation: scale-in 0.3s ease-out;
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── Glass card style ───────────────────────────────────────────── */
+.glass-card {
+    background: linear-gradient(135deg,
+            rgba(18, 18, 26, 0.95),
+            rgba(24, 24, 37, 0.85));
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(99, 102, 241, 0.08);
+    border-radius: 16px;
+    transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+    border-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);
+}
+
+/* ── Avatar style ──────────────────────────────────────────────── */
+.avatar-ring {
+    position: relative;
+    border-radius: 9999px;
+    padding: 3px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
+}
+
+/* ── Video thumbnail ───────────────────────────────────────────── */
+.video-thumb {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.video-thumb:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.video-thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.video-thumb:hover::after {
+    opacity: 1;
+}
+
+/* ── Time's Up overlay ─────────────────────────────────────────── */
+.times-up-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 15, 0.98);
+    backdrop-filter: blur(32px);
+    animation: fade-in 0.5s ease-out;
+}

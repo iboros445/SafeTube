@@ -1,0 +1,19 @@
+services:
+  safetube:
+    build: .
+    container_name: safetube-app
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persistent SQLite database
+      - safetube_data:/app/data
+      # Downloaded videos & thumbnails — mapped to host for easy access
+      - ./media:/app/media
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    restart: unless-stopped
+
+volumes:
+  safetube_data:
+    driver: local
