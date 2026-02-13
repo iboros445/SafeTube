@@ -1,5 +1,5 @@
 import { getActiveSession } from "@/src/lib/auth";
-import { getChildren } from "@/src/lib/actions";
+import { getChildren, getAdminTheme } from "@/src/lib/actions";
 import { redirect } from "next/navigation";
 import HomeClient from "@/src/components/HomeClient";
 
@@ -11,6 +11,7 @@ export default async function HomePage() {
     }
 
     const childrenList = await getChildren();
+    const adminTheme = await getAdminTheme();
 
-    return <HomeClient profiles={childrenList} />;
+    return <HomeClient profiles={childrenList} adminTheme={adminTheme} />;
 }

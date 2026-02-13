@@ -1,5 +1,5 @@
 import { getActiveSession } from "@/src/lib/auth";
-import { getVideos } from "@/src/lib/actions";
+import { getVideos, getVideoProgressMap } from "@/src/lib/actions";
 import { redirect } from "next/navigation";
 import ChildView from "@/src/components/ChildView";
 
@@ -10,12 +10,17 @@ export default async function ChildPage() {
         redirect("/");
     }
 
-    const videoList = await getVideos();
+    const [videoList, progressMap] = await Promise.all([
+        getVideos(),
+        getVideoProgressMap(sessionData.child.id),
+    ]);
 
     return (
         <ChildView
             child={sessionData.child}
             videos={videoList}
+            progressMap={progressMap}
+            initialLocked={sessionData.child.currentUsageSeconds >= sessionData.child.dailyLimitSeconds}
         />
     );
 }

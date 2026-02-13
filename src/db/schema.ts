@@ -5,6 +5,10 @@ export const children = sqliteTable("children", {
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
     avatarColor: text("avatar_color").notNull().default("#6366f1"),
+    avatarType: text("avatar_type").notNull().default("color"), // "color" | "emoji" | "photo"
+    avatarEmoji: text("avatar_emoji"),   // e.g. "🦁"
+    avatarPhoto: text("avatar_photo"),   // filename in media/avatars/
+    theme: text("theme").notNull().default("dark"), // "dark" | "light" — admin-only
     dailyLimitSeconds: integer("daily_limit_seconds").notNull().default(3600),
     currentUsageSeconds: integer("current_usage_seconds").notNull().default(0),
     lastHeartbeatAt: integer("last_heartbeat_at", { mode: "timestamp" }),
@@ -33,6 +37,19 @@ export const videos = sqliteTable("videos", {
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+// ─── Video Progress (per-child resume) ─────────────────────────────
+export const videoProgress = sqliteTable("video_progress", {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    childId: integer("child_id")
+        .notNull()
+        .references(() => children.id, { onDelete: "cascade" }),
+    videoId: integer("video_id")
+        .notNull()
+        .references(() => videos.id, { onDelete: "cascade" }),
+    progressSeconds: integer("progress_seconds").notNull().default(0),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 // ─── Settings ──────────────────────────────────────────────────────
 export const settings = sqliteTable("settings", {
     key: text("key").primaryKey(),
@@ -45,4 +62,5 @@ export type NewChild = typeof children.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Video = typeof videos.$inferSelect;
 export type NewVideo = typeof videos.$inferInsert;
+export type VideoProgress = typeof videoProgress.$inferSelect;
 export type Setting = typeof settings.$inferSelect;

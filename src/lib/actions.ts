@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/src/db";
-import { children, videos, sessions, settings } from "@/src/db/schema";
-import { eq, and } from "drizzle-orm";
+import { children, videos, sessions, settings, videoProgress } from "@/src/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import {
     createSession,
     endSession,
@@ -48,7 +48,10 @@ export async function addChild(
     pin: string,
     name: string,
     dailyLimitMinutes: number,
-    avatarColor: string
+    avatarColor: string,
+    avatarType: string = "color",
+    avatarEmoji?: string,
+    theme: string = "dark"
 ) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
@@ -56,17 +59,36 @@ export async function addChild(
     await db.insert(children).values({
         name,
         avatarColor,
+        avatarType,
+        avatarEmoji: avatarEmoji || null,
+        theme,
         dailyLimitSeconds: dailyLimitMinutes * 60,
     });
 
+    // Get the ID of the newly created child
+    const [newChild] = await db
+        .select({ id: children.id })
+        .from(children)
+        .orderBy(desc(children.id))
+        .limit(1);
+
     revalidatePath("/admin");
-    return { success: true };
+    revalidatePath("/");
+    return { success: true, childId: newChild?.id };
 }
 
 export async function updateChild(
     pin: string,
     childId: number,
-    data: { name?: string; dailyLimitMinutes?: number; avatarColor?: string }
+    data: {
+        name?: string;
+        dailyLimitMinutes?: number;
+        avatarColor?: string;
+        avatarType?: string;
+        avatarEmoji?: string;
+        avatarPhoto?: string;
+        theme?: string;
+    }
 ) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
@@ -74,6 +96,10 @@ export async function updateChild(
     const updateData: Record<string, unknown> = {};
     if (data.name) updateData.name = data.name;
     if (data.avatarColor) updateData.avatarColor = data.avatarColor;
+    if (data.avatarType) updateData.avatarType = data.avatarType;
+    if (data.avatarEmoji !== undefined) updateData.avatarEmoji = data.avatarEmoji || null;
+    if (data.avatarPhoto !== undefined) updateData.avatarPhoto = data.avatarPhoto || null;
+    if (data.theme) updateData.theme = data.theme;
     if (data.dailyLimitMinutes !== undefined)
         updateData.dailyLimitSeconds = data.dailyLimitMinutes * 60;
 
@@ -83,6 +109,7 @@ export async function updateChild(
         .where(eq(children.id, childId));
 
     revalidatePath("/admin");
+    revalidatePath("/");
     return { success: true };
 }
 
@@ -115,6 +142,34 @@ export async function endChildSession(pin: string, childId: number) {
     await endSession(childId);
     revalidatePath("/admin");
     return { success: true };
+}
+
+export async function punishChild(pin: string, childId: number) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    const [child] = await db.select().from(children).where(eq(children.id, childId)).limit(1);
+    if (!child) return { success: false, error: "Child not found" };
+
+    await db.update(children)
+        .set({ currentUsageSeconds: child.dailyLimitSeconds })
+        .where(eq(children.id, childId));
+
+    // Force end session too so they get kicked out immediately
+    await endSession(childId);
+
+    console.log(`[Punish] Child ${childId} punished. Usage set to ${child.dailyLimitSeconds}, session ended.`);
+    revalidatePath("/");
+    revalidatePath("/admin");
+    return { success: true };
+}
+
+
+
+export async function getAdminTheme() {
+    // We don't have a getSetting helper helper here so we query directly
+    const result = await db.select().from(settings).where(eq(settings.key, "admin_theme")).limit(1);
+    return result[0]?.value || "dark";
 }
 
 export async function adminEndCurrentSession() {
@@ -203,6 +258,111 @@ export async function updateRetention(pin: string, days: number) {
 
     revalidatePath("/admin");
     return { success: true };
+}
+
+export async function updateSetting(pin: string, key: string, value: string) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    // Upsert: try update first, insert if no rows affected
+    const existing = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, key))
+        .limit(1);
+
+    if (existing.length > 0) {
+        await db.update(settings).set({ value }).where(eq(settings.key, key));
+    } else {
+        await db.insert(settings).values({ key, value });
+    }
+
+    revalidatePath("/admin");
+    return { success: true };
+}
+
+// ─── Video Progress ────────────────────────────────────────────────
+
+export async function saveVideoProgress(
+    childId: number,
+    videoId: number,
+    progressSeconds: number
+) {
+    // Upsert: check if row exists
+    const [existing] = await db
+        .select()
+        .from(videoProgress)
+        .where(
+            and(
+                eq(videoProgress.childId, childId),
+                eq(videoProgress.videoId, videoId)
+            )
+        )
+        .limit(1);
+
+    if (existing) {
+        await db
+            .update(videoProgress)
+            .set({ progressSeconds, updatedAt: new Date() })
+            .where(eq(videoProgress.id, existing.id));
+    } else {
+        await db.insert(videoProgress).values({
+            childId,
+            videoId,
+            progressSeconds,
+            updatedAt: new Date(),
+        });
+    }
+}
+
+export async function getVideoProgressMap(childId: number) {
+    const rows = await db
+        .select()
+        .from(videoProgress)
+        .where(eq(videoProgress.childId, childId));
+    const map: Record<number, number> = {};
+    for (const row of rows) {
+        map[row.videoId] = row.progressSeconds;
+    }
+    return map;
+}
+
+// ─── Avatar Photo Upload ───────────────────────────────────────────
+
+export async function uploadAvatarPhoto(
+    pin: string,
+    childId: number,
+    formData: FormData
+) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    const file = formData.get("photo") as File;
+    if (!file) return { success: false, error: "No file uploaded" };
+
+    const avatarsDir = path.join(process.cwd(), "media", "avatars");
+    if (!fs.existsSync(avatarsDir)) {
+        fs.mkdirSync(avatarsDir, { recursive: true });
+    }
+
+    const ext = file.name.split(".").pop() || "jpg";
+    const filename = `avatar_${childId}_${Date.now()}.${ext}`;
+    const filePath = path.join(avatarsDir, filename);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+
+    await db
+        .update(children)
+        .set({
+            avatarType: "photo",
+            avatarPhoto: `avatars/${filename}`,
+        })
+        .where(eq(children.id, childId));
+
+    revalidatePath("/admin");
+    revalidatePath("/");
+    return { success: true, filename: `avatars/${filename}` };
 }
 
 // ─── Data Fetchers ─────────────────────────────────────────────────

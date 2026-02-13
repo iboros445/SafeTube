@@ -33,6 +33,10 @@ async function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       avatar_color TEXT NOT NULL DEFAULT '#6366f1',
+      avatar_type TEXT NOT NULL DEFAULT 'color',
+      avatar_emoji TEXT,
+      avatar_photo TEXT,
+      theme TEXT NOT NULL DEFAULT 'dark',
       daily_limit_seconds INTEGER NOT NULL DEFAULT 3600,
       current_usage_seconds INTEGER NOT NULL DEFAULT 0,
       last_heartbeat_at INTEGER,
@@ -57,6 +61,14 @@ async function initDb() {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS video_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+      video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+      progress_seconds INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -65,6 +77,17 @@ async function initDb() {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pin', '1234');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('retention_days', '7');
   `);
+
+  // Migrate existing databases: add new columns if missing (safe to fail)
+  const migrations = [
+    "ALTER TABLE children ADD COLUMN avatar_type TEXT NOT NULL DEFAULT 'color'",
+    "ALTER TABLE children ADD COLUMN avatar_emoji TEXT",
+    "ALTER TABLE children ADD COLUMN avatar_photo TEXT",
+    "ALTER TABLE children ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark'",
+  ];
+  for (const sql of migrations) {
+    try { await client.execute(sql); } catch { /* column already exists */ }
+  }
 }
 
 // Run init immediately

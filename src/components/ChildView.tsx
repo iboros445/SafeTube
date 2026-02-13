@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Child, Video } from "@/src/db/schema";
 import { useBeacon } from "@/src/hooks/useBeacon";
-import { Play, ArrowLeft, Volume2, VolumeX, Clock, Film } from "lucide-react";
+import { saveVideoProgress } from "@/src/lib/actions";
+import { ArrowLeft, Volume2, VolumeX, Clock, Film, Play, Pause, Maximize, Minimize } from "lucide-react";
+import Avatar from "@/src/components/Avatar";
 
 interface ChildViewProps {
     child: Child;
     videos: Video[];
+    progressMap: Record<number, number>;
+    initialLocked?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -16,36 +20,156 @@ function formatTime(seconds: number): string {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function ChildView({ child, videos }: ChildViewProps) {
+export default function ChildView({ child, videos, progressMap, initialLocked = false }: ChildViewProps) {
     const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
+    const [showPlayOverlay, setShowPlayOverlay] = useState(true);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const playerContainerRef = useRef<HTMLDivElement>(null);
+    const lastSaveTimeRef = useRef<number>(0);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     const beacon = useBeacon(isPlaying);
+    const isLocked = beacon.isLocked || initialLocked;
+    const isLight = child.theme === "light";
 
-    const handlePause = useCallback(() => {
-        videoRef.current?.pause();
-        setIsPlaying(false);
+    // ── Save progress (throttled to every 5s) ───────────────────────
+    const saveProgress = useCallback(
+        (currentTime: number) => {
+            if (!selectedVideo) return;
+            const now = Date.now();
+            if (now - lastSaveTimeRef.current < 5000) return;
+            lastSaveTimeRef.current = now;
+            saveVideoProgress(child.id, selectedVideo.id, Math.floor(currentTime));
+        },
+        [child.id, selectedVideo]
+    );
+
+    // Save progress on unmount / tab close
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (videoRef.current && selectedVideo) {
+                saveVideoProgress(
+                    child.id,
+                    selectedVideo.id,
+                    Math.floor(videoRef.current.currentTime)
+                );
+            }
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, [child.id, selectedVideo]);
+
+    // ── Video selection with resume ─────────────────────────────────
+    const handleSelectVideo = useCallback(
+        (video: Video) => {
+            setSelectedVideo(video);
+            setShowPlayOverlay(true);
+            setIsPlaying(false);
+            // Seek to saved progress after video loads
+            setTimeout(() => {
+                if (videoRef.current) {
+                    const saved = progressMap[video.id];
+                    if (saved && saved > 0) {
+                        videoRef.current.currentTime = saved;
+                    }
+                }
+            }, 100);
+        },
+        [progressMap]
+    );
+
+    const handlePlayPause = useCallback(() => {
+        if (!videoRef.current || beacon.isLocked) return;
+        if (isPlaying) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+            setShowPlayOverlay(true);
+            // Save progress on pause
+            if (selectedVideo) {
+                saveVideoProgress(
+                    child.id,
+                    selectedVideo.id,
+                    Math.floor(videoRef.current.currentTime)
+                );
+            }
+        } else {
+            videoRef.current.play();
+            setIsPlaying(true);
+            setShowPlayOverlay(false);
+            // Hide overlay after a brief moment
+            setTimeout(() => setShowPlayOverlay(false), 300);
+        }
+    }, [isPlaying, beacon.isLocked, selectedVideo, child.id]);
+
+    const handleFullscreen = useCallback(async () => {
+        if (!playerContainerRef.current) return;
+        try {
+            if (!document.fullscreenElement) {
+                await playerContainerRef.current.requestFullscreen();
+                setIsFullscreen(true);
+            } else {
+                await document.exitFullscreen();
+                setIsFullscreen(false);
+            }
+        } catch (err) {
+            console.error("Fullscreen error:", err);
+        }
+    }, []);
+
+    // Listen for fullscreen changes (e.g. user presses Esc)
+    useEffect(() => {
+        const handler = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener("fullscreenchange", handler);
+        return () => document.removeEventListener("fullscreenchange", handler);
     }, []);
 
     const handleVideoEnd = useCallback(() => {
         setIsPlaying(false);
-    }, []);
+        setShowPlayOverlay(true);
+        // Save at end (progress = 0 to restart next time)
+        if (selectedVideo) {
+            saveVideoProgress(child.id, selectedVideo.id, 0);
+        }
+    }, [child.id, selectedVideo]);
 
     const handleBack = useCallback(() => {
-        handlePause();
+        if (videoRef.current && selectedVideo) {
+            videoRef.current.pause();
+            saveVideoProgress(
+                child.id,
+                selectedVideo.id,
+                Math.floor(videoRef.current.currentTime)
+            );
+        }
+        setIsPlaying(false);
         setSelectedVideo(null);
-    }, [handlePause]);
+    }, [child.id, selectedVideo]);
+
+    const handleTimeUpdate = useCallback(() => {
+        if (videoRef.current) {
+            saveProgress(videoRef.current.currentTime);
+        }
+    }, [saveProgress]);
 
     // If locked, force pause
-    if (beacon.isLocked && isPlaying) {
+    if (isLocked && isPlaying) {
         videoRef.current?.pause();
         setIsPlaying(false);
     }
 
+    // ── Theme classes ───────────────────────────────────────────────
+    const bg = isLight ? "bg-gray-50" : "bg-safetube-bg";
+    const textPrimary = isLight ? "text-gray-900" : "text-white";
+    const textMuted = isLight ? "text-gray-500" : "text-safetube-muted";
+    const surface = isLight ? "bg-white border border-gray-200" : "bg-safetube-surface";
+    const topBar = isLight
+        ? "bg-white/90 backdrop-blur-md border-b border-gray-200"
+        : "bg-safetube-bg/80 backdrop-blur-md";
+
     // ── Time's Up Overlay ──────────────────────────────────────────
-    if (beacon.isLocked) {
+    if (isLocked) {
         return (
             <div className="times-up-overlay">
                 <div className="text-center animate-scale-in">
@@ -66,62 +190,100 @@ export default function ChildView({ child, videos }: ChildViewProps) {
         );
     }
 
-    // ── Video Player ───────────────────────────────────────────────
+    // ── Video Player (Minimal — no native controls) ─────────────────
     if (selectedVideo) {
         return (
-            <div className="min-h-screen bg-black flex flex-col">
+            <div ref={playerContainerRef} className="min-h-screen bg-black flex flex-col">
                 {/* Player Controls Bar */}
-                <div className="flex items-center justify-between p-4 bg-safetube-bg/80 backdrop-blur-md z-10">
-                    <button
-                        onClick={handleBack}
-                        className="flex items-center gap-2 text-safetube-muted hover:text-white transition-colors"
-                    >
-                        <ArrowLeft className="w-5 h-5" />
-                        <span className="font-medium">Back</span>
-                    </button>
-
-                    <h2 className="text-sm font-semibold text-safetube-text truncate max-w-md">
-                        {selectedVideo.title}
-                    </h2>
-
-                    <div className="flex items-center gap-4">
-                        {/* Time remaining */}
-                        <div className="flex items-center gap-1.5 text-xs text-safetube-muted">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>{formatTime(beacon.remaining)} left</span>
-                        </div>
-
-                        {/* Mute toggle */}
+                {!isFullscreen && (
+                    <div className={`flex items-center justify-between p-4 ${topBar} z-10`}>
                         <button
-                            onClick={() => {
-                                setIsMuted(!isMuted);
-                                if (videoRef.current) videoRef.current.muted = !isMuted;
-                            }}
-                            className="text-safetube-muted hover:text-white transition-colors"
+                            onClick={handleBack}
+                            className={`flex items-center gap-2 ${textMuted} hover:${textPrimary} transition-colors`}
                         >
-                            {isMuted ? (
-                                <VolumeX className="w-5 h-5" />
-                            ) : (
-                                <Volume2 className="w-5 h-5" />
-                            )}
+                            <ArrowLeft className="w-5 h-5" />
+                            <span className="font-medium">Back</span>
                         </button>
-                    </div>
-                </div>
 
-                {/* Video */}
-                <div className="flex-1 flex items-center justify-center bg-black">
+                        <h2 className={`text-sm font-semibold ${textPrimary} truncate max-w-md`}>
+                            {selectedVideo.title}
+                        </h2>
+
+                        <div className="flex items-center gap-4">
+                            {/* Time remaining */}
+                            <div className={`flex items-center gap-1.5 text-xs ${textMuted}`}>
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>{formatTime(beacon.remaining)} left</span>
+                            </div>
+
+                            {/* Mute toggle */}
+                            <button
+                                onClick={() => {
+                                    setIsMuted(!isMuted);
+                                    if (videoRef.current) videoRef.current.muted = !isMuted;
+                                }}
+                                className={`${textMuted} hover:${textPrimary} transition-colors`}
+                            >
+                                {isMuted ? (
+                                    <VolumeX className="w-5 h-5" />
+                                ) : (
+                                    <Volume2 className="w-5 h-5" />
+                                )}
+                            </button>
+
+                            {/* Fullscreen toggle */}
+                            <button
+                                onClick={handleFullscreen}
+                                className={`${textMuted} hover:${textPrimary} transition-colors`}
+                            >
+                                {isFullscreen ? (
+                                    <Minimize className="w-5 h-5" />
+                                ) : (
+                                    <Maximize className="w-5 h-5" />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Video with click-to-play overlay (NO native controls) */}
+                <div
+                    className="flex-1 flex items-center justify-center bg-black relative cursor-pointer select-none"
+                    onClick={handlePlayPause}
+                    onDoubleClick={handleFullscreen}
+                >
                     <video
                         ref={videoRef}
                         src={`/api/media/${selectedVideo.localPath}`}
-                        className="w-full h-full max-h-[calc(100vh-72px)] object-contain"
-                        controls
-                        controlsList="nodownload noremoteplayback"
+                        className="w-full h-full max-h-[calc(100vh-72px)] object-contain pointer-events-none"
                         disablePictureInPicture
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
+                        playsInline
+                        onPlay={() => {
+                            setIsPlaying(true);
+                            setShowPlayOverlay(false);
+                        }}
+                        onPause={() => {
+                            setIsPlaying(false);
+                            setShowPlayOverlay(true);
+                        }}
                         onEnded={handleVideoEnd}
+                        onTimeUpdate={handleTimeUpdate}
                         muted={isMuted}
+                        onContextMenu={(e) => e.preventDefault()}
                     />
+
+                    {/* Play/Pause overlay */}
+                    {showPlayOverlay && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                            <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center animate-scale-in">
+                                {isPlaying ? (
+                                    <Pause className="w-10 h-10 text-white fill-white" />
+                                ) : (
+                                    <Play className="w-10 h-10 text-white fill-white ml-1" />
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -129,19 +291,14 @@ export default function ChildView({ child, videos }: ChildViewProps) {
 
     // ── Video Library Grid ─────────────────────────────────────────
     return (
-        <div className="min-h-screen p-6 md:p-10">
+        <div className={`min-h-screen p-6 md:p-10 ${bg}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-8 animate-fade-in">
                 <div className="flex items-center gap-4">
-                    <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold text-white"
-                        style={{ backgroundColor: child.avatarColor }}
-                    >
-                        {child.name.charAt(0).toUpperCase()}
-                    </div>
+                    <Avatar child={child} size="md" />
                     <div>
-                        <h1 className="text-2xl font-bold text-white">{child.name}&apos;s Videos</h1>
-                        <div className="flex items-center gap-1.5 text-sm text-safetube-muted">
+                        <h1 className={`text-2xl font-bold ${textPrimary}`}>{child.name}&apos;s Videos</h1>
+                        <div className={`flex items-center gap-1.5 text-sm ${textMuted}`}>
                             <Clock className="w-3.5 h-3.5" />
                             <span>
                                 {formatTime(child.dailyLimitSeconds - child.currentUsageSeconds)}{" "}
@@ -154,10 +311,10 @@ export default function ChildView({ child, videos }: ChildViewProps) {
 
             {/* Grid */}
             {videos.length === 0 ? (
-                <div className="glass-card p-16 text-center animate-fade-in">
-                    <Film className="w-16 h-16 text-safetube-muted mx-auto mb-4" />
-                    <p className="text-safetube-muted text-lg">No videos yet</p>
-                    <p className="text-safetube-muted text-sm mt-1">
+                <div className={`${surface} rounded-2xl p-16 text-center animate-fade-in`}>
+                    <Film className={`w-16 h-16 ${textMuted} mx-auto mb-4`} />
+                    <p className={`${textMuted} text-lg`}>No videos yet</p>
+                    <p className={`${textMuted} text-sm mt-1`}>
                         Ask a parent to add some videos!
                     </p>
                 </div>
@@ -166,10 +323,10 @@ export default function ChildView({ child, videos }: ChildViewProps) {
                     {videos.map((video) => (
                         <button
                             key={video.id}
-                            onClick={() => setSelectedVideo(video)}
+                            onClick={() => handleSelectVideo(video)}
                             className="video-thumb group text-left"
                         >
-                            <div className="relative aspect-video bg-safetube-surface rounded-xl overflow-hidden">
+                            <div className={`relative aspect-video ${surface} rounded-xl overflow-hidden`}>
                                 {video.thumbnailPath ? (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
@@ -179,7 +336,7 @@ export default function ChildView({ child, videos }: ChildViewProps) {
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
-                                        <Film className="w-12 h-12 text-safetube-muted" />
+                                        <Film className={`w-12 h-12 ${textMuted}`} />
                                     </div>
                                 )}
 
@@ -196,9 +353,24 @@ export default function ChildView({ child, videos }: ChildViewProps) {
                                         {formatTime(video.durationSeconds)}
                                     </div>
                                 )}
+
+                                {/* Resume indicator */}
+                                {progressMap[video.id] > 0 && (
+                                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30 z-10">
+                                        <div
+                                            className="h-full bg-indigo-500 rounded-r"
+                                            style={{
+                                                width: `${Math.min(
+                                                    100,
+                                                    (progressMap[video.id] / (video.durationSeconds || 1)) * 100
+                                                )}%`,
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
-                            <p className="mt-3 text-sm font-semibold text-safetube-text group-hover:text-white transition-colors line-clamp-2 px-1">
+                            <p className={`mt-3 text-sm font-semibold ${textPrimary} group-hover:text-indigo-400 transition-colors line-clamp-2 px-1`}>
                                 {video.title}
                             </p>
                         </button>

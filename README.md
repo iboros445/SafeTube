@@ -14,6 +14,8 @@ SafeTube is a self-hosted web app that lets parents download YouTube videos and 
 | ⏱️ **Beacon Time Tracking** | Screen time is tracked via a 5-second server heartbeat. Only *active playback* counts — pausing or sitting in menus does **not** deduct time. |
 | 🚫 **No Algorithms** | No recommendations, no autoplay, no ads. Just a clean grid of parent-approved videos. |
 | 📥 **Local Downloads** | Videos are downloaded via `yt-dlp` and stored locally. No streaming from YouTube — ever. |
+| 📤 **Local Video Upload** | Upload MP4/MKV files directly from the Admin Dashboard for offline viewing. Thumbnails are auto-generated. |
+| 🎨 **Personalization** | Per-child themes (Light/Dark), custom avatars (Emoji/Photo/Color), and a fullscreen immersive player. |
 | 🗑️ **Auto-Cleanup** | Videos are automatically deleted after a configurable retention period (default: 7 days). |
 | 🐳 **Dockerized** | One command to deploy. Node.js + Python + FFmpeg in a single container. |
 

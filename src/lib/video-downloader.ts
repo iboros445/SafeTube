@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
@@ -25,6 +25,18 @@ export interface DownloadProgress {
 }
 
 /**
+ * Check if yt-dlp is available on the system PATH.
+ */
+function isYtDlpAvailable(): boolean {
+    try {
+        execSync("yt-dlp --version", { stdio: "ignore" });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Downloads a YouTube video using yt-dlp.
  * Returns metadata about the downloaded file.
  */
@@ -32,11 +44,24 @@ export async function downloadVideo(
     url: string,
     onProgress?: (progress: DownloadProgress) => void
 ): Promise<DownloadResult> {
+    // Pre-flight check
+    if (!isYtDlpAvailable()) {
+        return {
+            success: false,
+            error:
+                "yt-dlp is not installed or not on PATH. Install it with: pip install yt-dlp (or use Docker).",
+        };
+    }
+
     return new Promise((resolve) => {
         // First, get video info
         const infoProc = spawn("yt-dlp", [
             "--dump-json",
             "--no-download",
+            "--js-runtimes",
+            "node",
+            "--remote-components",
+            "ejs:github",
             url,
         ]);
 
@@ -49,6 +74,13 @@ export async function downloadVideo(
 
         infoProc.stderr.on("data", (data) => {
             infoError += data.toString();
+        });
+
+        infoProc.on("error", (err) => {
+            resolve({
+                success: false,
+                error: `Failed to start yt-dlp: ${err.message}. Make sure yt-dlp is installed.`,
+            });
         });
 
         infoProc.on("close", (infoCode) => {
@@ -95,6 +127,10 @@ export async function downloadVideo(
                 "--write-thumbnail",
                 "--convert-thumbnails",
                 "jpg",
+                "--js-runtimes",
+                "node",
+                "--remote-components",
+                "ejs:github",
                 "-o",
                 outputPath,
                 url,
@@ -127,6 +163,13 @@ export async function downloadVideo(
                 }
             });
 
+            dlProc.on("error", (err) => {
+                resolve({
+                    success: false,
+                    error: `Failed to start yt-dlp download: ${err.message}`,
+                });
+            });
+
             dlProc.on("close", (dlCode) => {
                 if (dlCode !== 0) {
                     resolve({
@@ -146,7 +189,6 @@ export async function downloadVideo(
                 let actualThumbPath: string | undefined;
                 for (const tp of possibleThumbs) {
                     if (fs.existsSync(tp)) {
-                        // Rename to our expected name if needed
                         if (tp !== thumbnailPath) {
                             fs.renameSync(tp, thumbnailPath);
                         }
