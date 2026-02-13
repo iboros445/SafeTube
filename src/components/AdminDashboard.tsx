@@ -19,6 +19,8 @@ import {
     punishChild,
     uploadSubtitle,
     adminLogout,
+    getChildWatchHistory,
+    updateVideoProgressAdmin,
 } from "@/src/lib/actions";
 import {
     Shield,
@@ -41,6 +43,9 @@ import {
     Clock,
     Upload,
     Languages,
+    ChevronDown,
+    ChevronUp,
+    Play,
 } from "lucide-react";
 import Avatar from "@/src/components/Avatar";
 
@@ -116,6 +121,11 @@ export default function AdminDashboard({
     const [confirmingPunish, setConfirmingPunish] = useState<number | null>(null);
     const [editingColor, setEditingColor] = useState<number | null>(null);
     const photoInputRef = useRef<HTMLInputElement>(null);
+
+    // Watch History State
+    const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
+    const [watchHistory, setWatchHistory] = useState<Awaited<ReturnType<typeof getChildWatchHistory>>>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
     // Settings State
     const [newPin, setNewPin] = useState("");
@@ -708,8 +718,134 @@ export default function AdminDashboard({
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         )}
+
+                                        {/* Watch History toggle */}
+                                        <button
+                                            onClick={async () => {
+                                                if (expandedHistory === child.id) {
+                                                    setExpandedHistory(null);
+                                                    return;
+                                                }
+                                                setHistoryLoading(true);
+                                                setExpandedHistory(child.id);
+                                                const data = await getChildWatchHistory(child.id);
+                                                setWatchHistory(data);
+                                                setHistoryLoading(false);
+                                            }}
+                                            className={`p-2 rounded-lg ${expandedHistory === child.id ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : btnSurface} hover:text-indigo-400 transition-all`}
+                                            title="Watch history"
+                                        >
+                                            <Film className="w-4 h-4" />
+                                        </button>
                                     </div>
                                 </div>
+
+                                {/* ── Watch History Panel ── */}
+                                {expandedHistory === child.id && (
+                                    <div className={`mt-4 pt-4 border-t ${isLight ? 'border-slate-200' : 'border-slate-800'} animate-fade-in`}>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className={`text-sm font-semibold ${textPrimary} flex items-center gap-2`}>
+                                                <Play className="w-3.5 h-3.5 text-indigo-400" />
+                                                Watch History
+                                            </h4>
+                                            <button
+                                                onClick={() => setExpandedHistory(null)}
+                                                className={`p-1 rounded-lg ${btnSurface} transition-all`}
+                                            >
+                                                <ChevronUp className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+
+                                        {historyLoading ? (
+                                            <div className="flex items-center justify-center py-6">
+                                                <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+                                            </div>
+                                        ) : watchHistory.length === 0 ? (
+                                            <div className={`text-center py-6 ${textMuted} text-sm`}>
+                                                <Film className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                <p>No videos watched yet</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {watchHistory.map((entry) => {
+                                                    const duration = entry.durationSeconds || 1;
+                                                    const pct = Math.min(100, (entry.progressSeconds / duration) * 100);
+                                                    return (
+                                                        <div
+                                                            key={entry.progressId}
+                                                            className={`flex gap-3 p-3 rounded-xl ${surfaceCls} transition-all`}
+                                                        >
+                                                            {/* Thumbnail */}
+                                                            <div className="w-20 h-14 rounded-lg overflow-hidden bg-black/30 flex-shrink-0 relative">
+                                                                {entry.thumbnailPath ? (
+                                                                    <img
+                                                                        src={`/media/${entry.thumbnailPath}`}
+                                                                        alt={entry.title}
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center">
+                                                                        <Film className={`w-5 h-5 ${textMuted}`} />
+                                                                    </div>
+                                                                )}
+                                                                {/* Progress overlay bar */}
+                                                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+                                                                    <div
+                                                                        className="h-full bg-indigo-500 transition-all"
+                                                                        style={{ width: `${pct}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Info + Slider */}
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className={`text-xs font-medium ${textPrimary} truncate`}>
+                                                                    {entry.title}
+                                                                </p>
+                                                                <p className={`text-[10px] ${textMuted} mt-0.5`}>
+                                                                    {formatTime(entry.progressSeconds)} / {formatTime(duration)}
+                                                                </p>
+                                                                {/* Seek bar */}
+                                                                <input
+                                                                    type="range"
+                                                                    min={0}
+                                                                    max={duration}
+                                                                    step={1}
+                                                                    defaultValue={entry.progressSeconds}
+                                                                    onMouseUp={async (e) => {
+                                                                        const val = Number((e.target as HTMLInputElement).value);
+                                                                        setActionLoading(`progress-${entry.progressId}`);
+                                                                        await updateVideoProgressAdmin(pin, child.id, entry.videoId, val);
+                                                                        setActionLoading(null);
+                                                                        // Refresh the history panel
+                                                                        const data = await getChildWatchHistory(child.id);
+                                                                        setWatchHistory(data);
+                                                                    }}
+                                                                    onTouchEnd={async (e) => {
+                                                                        const val = Number((e.target as HTMLInputElement).value);
+                                                                        setActionLoading(`progress-${entry.progressId}`);
+                                                                        await updateVideoProgressAdmin(pin, child.id, entry.videoId, val);
+                                                                        setActionLoading(null);
+                                                                        const data = await getChildWatchHistory(child.id);
+                                                                        setWatchHistory(data);
+                                                                    }}
+                                                                    className="w-full h-1.5 mt-2 accent-indigo-500 cursor-pointer"
+                                                                    title="Drag to adjust resume position"
+                                                                />
+                                                                {actionLoading === `progress-${entry.progressId}` && (
+                                                                    <div className="flex items-center gap-1 mt-1">
+                                                                        <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
+                                                                        <span className="text-[10px] text-indigo-400">Saving...</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ))}
 

@@ -19,11 +19,7 @@ const client = createClient({
 export const db = drizzle(client, { schema });
 
 // ─── Auto-create tables on first run ───────────────────────────────
-let initialized = false;
 async function initDb() {
-  if (initialized) return;
-  initialized = true;
-
   // Set busy timeout & WAL mode to prevent SQLITE_BUSY during concurrent access
   await client.execute("PRAGMA busy_timeout = 5000");
   await client.execute("PRAGMA journal_mode = WAL");
@@ -57,6 +53,7 @@ async function initDb() {
       youtube_url TEXT,
       local_path TEXT NOT NULL,
       thumbnail_path TEXT,
+      subtitle_path TEXT,
       duration_seconds INTEGER,
       created_at INTEGER NOT NULL
     );
@@ -84,21 +81,20 @@ async function initDb() {
     "ALTER TABLE children ADD COLUMN avatar_emoji TEXT",
     "ALTER TABLE children ADD COLUMN avatar_photo TEXT",
     "ALTER TABLE children ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark'",
+    "ALTER TABLE videos ADD COLUMN subtitle_path TEXT",
   ];
   for (const sql of migrations) {
     try { await client.execute(sql); } catch { /* column already exists */ }
   }
 }
 
-// Only initialize at runtime, not during build
-// Check if we're in a build environment (Next.js sets this during build)
-if (process.env.NODE_ENV !== 'production' || typeof window === 'undefined') {
-  // Defer initialization until first actual use to avoid running during build
-  // We'll call this from server components/API routes on first request
-  if (process.env.NEXT_PHASE !== 'phase-production-build') {
-    initDb().catch(console.error);
-  }
+// Singleton promise: created once, awaited by all consumers to ensure DB is ready.
+// Skipped only during Next.js production build phase.
+let dbReady: Promise<void>;
+if (process.env.NEXT_PHASE === 'phase-production-build') {
+  dbReady = Promise.resolve(); // no-op during build
+} else {
+  dbReady = initDb();
 }
 
-// Export initDb so it can be called manually if needed
-export { initDb };
+export { dbReady };

@@ -1,4 +1,4 @@
-import { db } from "@/src/db";
+import { db, dbReady } from "@/src/db";
 import { sessions, children } from "@/src/db/schema";
 import { eq, and } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -72,6 +72,7 @@ export async function clearAdminSession() {
 }
 
 export async function getActiveSession() {
+    await dbReady;
     const cookieStore = await cookies();
     const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
 
