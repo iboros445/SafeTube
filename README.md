@@ -99,7 +99,7 @@ Child clicks avatar  →  Server sets HttpOnly cookie
                          ├── Child clears localStorage? → Cookie is HttpOnly → Unaffected
                          └── Child restarts browser? → Cookie persists → Same session
                          
-Only a parent (PIN) can "End Session" from the Admin Dashboard.
+Only a parent (PIN) can "End Session" from the Admin Dashboard. (Provided the child doesn't know how to clear cookies, or use incognito mode🙏)
 ```
 
 ---
