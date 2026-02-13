@@ -46,6 +46,8 @@ next-env.d.ts
 # Ignore the sqlite database and uploaded files
 data/*.db
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 media/
 !media/.gitkeep
 
