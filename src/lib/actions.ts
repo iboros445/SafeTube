@@ -8,6 +8,7 @@ import {
     endSession,
     validateAdminPin,
     clearSessionCookie,
+    clearAdminSession,
 } from "@/src/lib/auth";
 import { downloadVideo } from "@/src/lib/video-downloader";
 import { revalidatePath } from "next/cache";
@@ -42,6 +43,11 @@ export async function loginChild(childId: number) {
 export async function verifyPin(pin: string) {
     const valid = await validateAdminPin(pin);
     return { success: valid };
+}
+
+export async function adminLogout() {
+    await clearAdminSession();
+    revalidatePath("/admin");
 }
 
 export async function addChild(

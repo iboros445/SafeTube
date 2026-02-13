@@ -5,7 +5,9 @@ import { cookies } from "next/headers";
 import crypto from "crypto";
 
 const SESSION_COOKIE = "safetube_session";
+const ADMIN_SESSION_COOKIE = "safetube_admin_session";
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const ADMIN_SESSION_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export async function createSession(childId: number): Promise<string> {
     const id = crypto.randomUUID();
@@ -38,6 +40,35 @@ export async function createSession(childId: number): Promise<string> {
     });
 
     return id;
+}
+
+export async function createAdminSession() {
+    const id = crypto.randomUUID();
+    const cookieStore = await cookies();
+
+    // We store the admin session in a cookie. For a local app, we don't necessarily 
+    // need a DB table for admin sessions if we use a signed cookie or just a simple ID 
+    // that we check. Since we already have a settings table, we could store a token there,
+    // but for simplicity and responsiveness, a secure cookie is often enough for a local parent dashboard.
+    // However, to be extra safe and follow the same pattern, we'll just use a cookie with a random ID.
+
+    cookieStore.set(ADMIN_SESSION_COOKIE, id, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "strict",
+        path: "/",
+        maxAge: ADMIN_SESSION_DURATION_MS / 1000,
+    });
+}
+
+export async function getAdminSession(): Promise<boolean> {
+    const cookieStore = await cookies();
+    return cookieStore.has(ADMIN_SESSION_COOKIE);
+}
+
+export async function clearAdminSession() {
+    const cookieStore = await cookies();
+    cookieStore.delete(ADMIN_SESSION_COOKIE);
 }
 
 export async function getActiveSession() {
@@ -91,23 +122,35 @@ const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const MAX_ATTEMPTS = 5;
 const ATTEMPTS_MAP = new Map<string, { count: number; firstAttempt: number }>();
 
-function checkRateLimit(key: string): boolean {
+/**
+ * Returns true if the action is allowed, false if rate limited.
+ * Only increments the counter if increment is true.
+ */
+function checkRateLimit(key: string, increment: boolean = true): boolean {
     const now = Date.now();
     const record = ATTEMPTS_MAP.get(key);
 
     if (!record) {
-        ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        if (increment) {
+            ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        }
         return true;
     }
 
     if (now - record.firstAttempt > RATE_LIMIT_WINDOW) {
-        ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        if (increment) {
+            ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        } else {
+            ATTEMPTS_MAP.delete(key);
+        }
         return true;
     }
 
     if (record.count >= MAX_ATTEMPTS) return false;
 
-    record.count++;
+    if (increment) {
+        record.count++;
+    }
     return true;
 }
 
@@ -117,10 +160,16 @@ function hashPin(pin: string, salt: string): string {
 }
 
 export async function validateAdminPin(pin: string): Promise<boolean> {
-    // Simple global rate limit for simplicity (or per-IP if we had request object here)
-    // Since this is a server action called from client components, we don't always have IP easily without headers.
-    // For a local app, global limit is safer/easier.
-    if (!checkRateLimit("global_admin_pin")) {
+    // 1. Check for valid session first
+    if (await getAdminSession()) {
+        return true;
+    }
+
+    // 2. If no PIN provided and no session, return false without incrementing rate limit
+    if (!pin) return false;
+
+    // 3. Check rate limit WITHOUT incrementing yet
+    if (!checkRateLimit("global_admin_pin", false)) {
         console.warn("Admin PIN rate limit exceeded");
         return false;
     }
@@ -134,11 +183,13 @@ export async function validateAdminPin(pin: string): Promise<boolean> {
 
     if (!setting?.value) return false;
 
+    let isValid = false;
+
     // Check if stored value is a hash (simple heuristic: contains :)
     if (setting.value.includes(":")) {
         const [salt, storedHash] = setting.value.split(":");
         const hash = hashPin(pin, salt);
-        return hash === storedHash;
+        isValid = (hash === storedHash);
     } else {
         // Legacy plaintext check
         if (setting.value === pin) {
@@ -149,8 +200,17 @@ export async function validateAdminPin(pin: string): Promise<boolean> {
                 .update(settings)
                 .set({ value: `${salt}:${hash}` })
                 .where(eq(settings.key, "admin_pin"));
-            return true;
+            isValid = true;
         }
+    }
+
+    if (isValid) {
+        // Create session on success
+        await createAdminSession();
+        return true;
+    } else {
+        // INCREMENT rate limit ONLY on failure
+        checkRateLimit("global_admin_pin", true);
         return false;
     }
 }

@@ -22,28 +22,32 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# ── Install Python3 + pip + FFmpeg + yt-dlp (critical) ────────────
+# ── Install Python3 + pip + FFmpeg + yt-dlp + su-exec ────────────
 RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
+  python3 \
+  py3-pip \
+  ffmpeg \
+  su-exec \
   && pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 # ── Copy built app ────────────────────────────────────────────────
-COPY --from=builder /app/public ./public
+# Ensure public exists in builder to avoid failure
+COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/package.json ./package.json
+# Copy public if it exists
+COPY --from=builder /app/public* ./public/
 
 # ── Copy cleanup script ──────────────────────────────────────────
 COPY scripts/ ./scripts/
 
 # ── Create data & media directories ───────────────────────────────
-RUN mkdir -p /app/data /app/media
+RUN mkdir -p /app/data /app/media && chown -R node:node /app/data /app/media
 
-# ── Add cron job for video cleanup ────────────────────────────────
-RUN echo "0 3 * * * python3 /app/scripts/cleanup.py" | crontab -
+# ── Add cron job for video cleanup (for the node user) ────────────
+RUN echo "0 3 * * * python3 /app/scripts/cleanup.py" | crontab -u node -
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Start crond as root, then run the app as the node user
+CMD ["sh", "-c", "crond && su-exec node node server.js"]

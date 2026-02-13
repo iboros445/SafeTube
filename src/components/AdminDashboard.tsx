@@ -18,6 +18,7 @@ import {
     uploadAvatarPhoto,
     punishChild,
     uploadSubtitle,
+    adminLogout,
 } from "@/src/lib/actions";
 import {
     Shield,
@@ -47,6 +48,7 @@ interface AdminDashboardProps {
     profiles: Child[];
     videos: Video[];
     settings: Record<string, string>;
+    initialIsAdmin?: boolean;
 }
 
 const AVATAR_COLORS = [
@@ -80,12 +82,13 @@ export default function AdminDashboard({
     profiles: childrenList,
     videos,
     settings,
+    initialIsAdmin = false,
 }: AdminDashboardProps) {
     const router = useRouter();
 
     // PIN State
     const [pin, setPin] = useState("");
-    const [authenticated, setAuthenticated] = useState(false);
+    const [authenticated, setAuthenticated] = useState(initialIsAdmin);
     const [pinError, setPinError] = useState(false);
 
     // Form States
@@ -222,12 +225,23 @@ export default function AdminDashboard({
                             <p className={`${textMuted} text-xs`}>SafeTube Admin</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => router.push("/")}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl ${homeBtn} text-sm transition-all`}
-                    >
-                        <ArrowLeft className="w-4 h-4" /> Home
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => router.push("/")}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl ${homeBtn} text-sm transition-all`}
+                        >
+                            <ArrowLeft className="w-4 h-4" /> Home
+                        </button>
+                        <button
+                            onClick={async () => {
+                                await adminLogout();
+                                setAuthenticated(false);
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 text-sm transition-all`}
+                        >
+                            <LogOut className="w-4 h-4" /> Logout
+                        </button>
+                    </div>
                 </div>
 
                 {/* Tabs */}
