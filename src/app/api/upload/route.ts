@@ -83,12 +83,39 @@ export async function POST(req: NextRequest) {
 
         await ffmpegPromise;
 
+        // Get duration using ffprobe
+        const durationPromise = new Promise<number>((resolve) => {
+            const ffprobe = spawn("ffprobe", [
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                filePath
+            ]);
+
+            let output = "";
+            ffprobe.stdout.on("data", (data) => {
+                output += data.toString();
+            });
+
+            ffprobe.on("close", () => {
+                const seconds = parseFloat(output.trim());
+                resolve(isNaN(seconds) ? 0 : Math.round(seconds));
+            });
+
+            ffprobe.on("error", (err) => {
+                console.error("FFprobe error:", err);
+                resolve(0);
+            });
+        });
+
+        const durationSeconds = await durationPromise;
+
         // Insert into DB
         await db.insert(videos).values({
             title: title || file.name,
             localPath: filename,
             thumbnailPath: fs.existsSync(thumbnailPath) ? thumbnailFilename : null,
-            durationSeconds: 0,
+            durationSeconds,
             createdAt: new Date(),
         });
 

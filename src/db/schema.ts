@@ -33,6 +33,7 @@ export const videos = sqliteTable("videos", {
     youtubeUrl: text("youtube_url"),
     localPath: text("local_path").notNull(),
     thumbnailPath: text("thumbnail_path"),
+    subtitlePath: text("subtitle_path"),
     durationSeconds: integer("duration_seconds"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

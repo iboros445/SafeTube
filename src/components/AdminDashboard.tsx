@@ -17,6 +17,7 @@ import {
     updateSetting,
     uploadAvatarPhoto,
     punishChild,
+    uploadSubtitle,
 } from "@/src/lib/actions";
 import {
     Shield,
@@ -38,6 +39,7 @@ import {
     Palette,
     Clock,
     Upload,
+    Languages,
 } from "lucide-react";
 import Avatar from "@/src/components/Avatar";
 
@@ -100,6 +102,8 @@ export default function AdminDashboard({
     const [videoUrl, setVideoUrl] = useState("");
     const [downloading, setDownloading] = useState(false);
     const [downloadStatus, setDownloadStatus] = useState("");
+    const [subtitlingVideoId, setSubtitlingVideoId] = useState<number | null>(null);
+    const subtitleInputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadStatus, setUploadStatus] = useState("");
@@ -894,46 +898,68 @@ export default function AdminDashboard({
                                                     ` • Added ${new Date(video.createdAt).toLocaleDateString()}`}
                                             </p>
                                         </div>
-                                        {confirmingDelete === `video-${video.id}` ? (
-                                            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5 animate-fade-in flex-shrink-0">
-                                                <span className="text-xs text-red-400 font-medium whitespace-nowrap">Delete?</span>
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            setActionLoading(`del-v-${video.id}`);
-                                                            await deleteVideo(pin, video.id);
-                                                            router.refresh();
-                                                        } catch (err) {
-                                                            console.error("Failed to delete video:", err);
-                                                        } finally {
-                                                            setActionLoading(null);
-                                                            setConfirmingDelete(null);
-                                                        }
-                                                    }}
-                                                    disabled={actionLoading === `del-v-${video.id}`}
-                                                    className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-all"
-                                                >
-                                                    {actionLoading === `del-v-${video.id}` ? (
-                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                    ) : (
-                                                        <Check className="w-3.5 h-3.5" />
-                                                    )}
-                                                </button>
-                                                <button
-                                                    onClick={() => setConfirmingDelete(null)}
-                                                    className={`p-1 rounded ${btnSurface} transition-all`}
-                                                >
-                                                    <X className="w-3.5 h-3.5" />
-                                                </button>
-                                            </div>
-                                        ) : (
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            {video.subtitlePath && (
+                                                <span className="text-[10px] bg-safetube-accent/20 text-safetube-accent px-1.5 py-0.5 rounded uppercase font-bold">CC</span>
+                                            )}
                                             <button
-                                                onClick={() => setConfirmingDelete(`video-${video.id}`)}
-                                                className={`p-2 rounded-lg ${btnSurface} hover:text-red-400 transition-all flex-shrink-0`}
+                                                onClick={() => {
+                                                    setSubtitlingVideoId(video.id);
+                                                    subtitleInputRef.current?.click();
+                                                }}
+                                                disabled={actionLoading === `sub-${video.id}`}
+                                                className={`p-2 rounded-lg ${btnSurface} hover:text-safetube-accent transition-all`}
+                                                title="Upload Subtitles (.srt, .vtt)"
                                             >
-                                                <Trash2 className="w-4 h-4" />
+                                                {actionLoading === `sub-${video.id}` ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <Languages className="w-4 h-4" />
+                                                )}
                                             </button>
-                                        )}
+
+                                            {confirmingDelete === `video-${video.id}` ? (
+                                                <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5 animate-fade-in">
+                                                    <span className="text-xs text-red-400 font-medium whitespace-nowrap">Delete?</span>
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                setActionLoading(`del-v-${video.id}`);
+                                                                await deleteVideo(pin, video.id);
+                                                                router.refresh();
+                                                            } catch (err) {
+                                                                console.error("Failed to delete video:", err);
+                                                            } finally {
+                                                                setActionLoading(null);
+                                                                setConfirmingDelete(null);
+                                                            }
+                                                        }}
+                                                        disabled={actionLoading === `del-v-${video.id}`}
+                                                        className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-all"
+                                                    >
+                                                        {actionLoading === `del-v-${video.id}` ? (
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Check className="w-3.5 h-3.5" />
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConfirmingDelete(null)}
+                                                        className={`p-1 rounded ${btnSurface} transition-all`}
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setConfirmingDelete(`video-${video.id}`)}
+                                                    className={`p-2 rounded-lg ${btnSurface} hover:text-red-400 transition-all`}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+
                                     </div>
                                 </div>
                             ))}
@@ -945,7 +971,39 @@ export default function AdminDashboard({
                                     <p className="text-xs mt-1">Paste a YouTube URL above to get started.</p>
                                 </div>
                             )}
+
+                            <input
+                                type="file"
+                                ref={subtitleInputRef}
+                                className="hidden"
+                                accept=".srt,.vtt"
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file || !subtitlingVideoId) return;
+
+                                    setActionLoading(`sub-${subtitlingVideoId}`);
+                                    const formData = new FormData();
+                                    formData.append("file", file);
+
+                                    try {
+                                        const result = await uploadSubtitle(pin, subtitlingVideoId, formData);
+                                        if (result.success) {
+                                            router.refresh();
+                                        } else {
+                                            alert(result.error || "Upload failed");
+                                        }
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert("An error occurred during upload");
+                                    } finally {
+                                        setActionLoading(null);
+                                        setSubtitlingVideoId(null);
+                                        if (e.target) e.target.value = "";
+                                    }
+                                }}
+                            />
                         </div>
+
                     )
                 }
 

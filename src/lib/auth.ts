@@ -87,12 +87,70 @@ export async function clearSessionCookie() {
     cookieStore.delete(SESSION_COOKIE);
 }
 
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_ATTEMPTS = 5;
+const ATTEMPTS_MAP = new Map<string, { count: number; firstAttempt: number }>();
+
+function checkRateLimit(key: string): boolean {
+    const now = Date.now();
+    const record = ATTEMPTS_MAP.get(key);
+
+    if (!record) {
+        ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        return true;
+    }
+
+    if (now - record.firstAttempt > RATE_LIMIT_WINDOW) {
+        ATTEMPTS_MAP.set(key, { count: 1, firstAttempt: now });
+        return true;
+    }
+
+    if (record.count >= MAX_ATTEMPTS) return false;
+
+    record.count++;
+    return true;
+}
+
+// Scrypt helper
+function hashPin(pin: string, salt: string): string {
+    return crypto.scryptSync(pin, salt, 64).toString("hex");
+}
+
 export async function validateAdminPin(pin: string): Promise<boolean> {
+    // Simple global rate limit for simplicity (or per-IP if we had request object here)
+    // Since this is a server action called from client components, we don't always have IP easily without headers.
+    // For a local app, global limit is safer/easier.
+    if (!checkRateLimit("global_admin_pin")) {
+        console.warn("Admin PIN rate limit exceeded");
+        return false;
+    }
+
     const { settings } = await import("@/src/db/schema");
     const [setting] = await db
         .select()
         .from(settings)
         .where(eq(settings.key, "admin_pin"))
         .limit(1);
-    return setting?.value === pin;
+
+    if (!setting?.value) return false;
+
+    // Check if stored value is a hash (simple heuristic: contains :)
+    if (setting.value.includes(":")) {
+        const [salt, storedHash] = setting.value.split(":");
+        const hash = hashPin(pin, salt);
+        return hash === storedHash;
+    } else {
+        // Legacy plaintext check
+        if (setting.value === pin) {
+            // Upgrade to hash
+            const salt = crypto.randomBytes(16).toString("hex");
+            const hash = hashPin(pin, salt);
+            await db
+                .update(settings)
+                .set({ value: `${salt}:${hash}` })
+                .where(eq(settings.key, "admin_pin"));
+            return true;
+        }
+        return false;
+    }
 }

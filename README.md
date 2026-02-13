@@ -10,13 +10,15 @@ SafeTube is a self-hosted web app that lets parents download YouTube videos and 
 
 | Feature | Description |
 |---|---|
-| 🔒 **Ironclad Sessions** | Children select their profile and are cryptographically locked in via HttpOnly cookies. No logout button — only parents can end a session. |
-| ⏱️ **Beacon Time Tracking** | Screen time is tracked via a 5-second server heartbeat. Only *active playback* counts — pausing or sitting in menus does **not** deduct time. |
-| 🚫 **No Algorithms** | No recommendations, no autoplay, no ads. Just a clean grid of parent-approved videos. |
-| 📥 **Local Downloads** | Videos are downloaded via `yt-dlp` and stored locally. No streaming from YouTube — ever. |
-| 📤 **Local Video Upload** | Upload MP4/MKV files directly from the Admin Dashboard for offline viewing. Thumbnails are auto-generated. |
-| 🎨 **Personalization** | Per-child themes (Light/Dark), custom avatars (Emoji/Photo/Color), and a fullscreen immersive player. |
-| 🗑️ **Auto-Cleanup** | Videos are automatically deleted after a configurable retention period (default: 7 days). |
+| 🔒 **Ironclad Sessions** | Children select their profile and are cryptographically locked in via HttpOnly cookies. |
+| 🛡️ **Hardened Auth** | PINs are secured with **scrypt hashing** and brute-force protection (rate limiting). |
+| ⏱️ **Beacon Time Tracking** | Heartbeat-based tracking ensures only *active playback* counts. |
+| 🚫 **No Algorithms** | No recommendations or ads. Only parent-approved local files. |
+| 📥 **Local Downloads** | Videos downloaded via `yt-dlp`. No external streaming. |
+| 📤 **Local Video Upload** | Upload MP4/MKV files directly. Durations are accurately extracted via `ffprobe`. |
+| 💬 **Subtitle Support** | Support for `.srt` and `.vtt`. SRTs are auto-converted to WebVTT for playback. |
+| 🎨 **Personalization** | Per-child themes, custom avatars, and an immersive fullscreen player. |
+| 🗑️ **Auto-Cleanup** | Videos and metadata are automatically deleted after a configurable period. |
 | 🐳 **Dockerized** | One command to deploy. Node.js + Python + FFmpeg in a single container. |
 
 ---
@@ -41,10 +43,11 @@ Navigate to **[http://localhost:3000](http://localhost:3000)** in your browser.
 ### 3. First-Time Setup
 
 1. Click **"Parent Dashboard"** at the bottom of the home screen.
-2. Enter the default PIN: **`1234`** (change this immediately in Settings!).
-3. **Add a child** — give them a name, choose an avatar color, and set a daily screen time limit.
-4. **Download a video** — go to the Videos tab, paste a YouTube URL, and click Download.
-5. Go back to the home screen — your child can now select their profile and start watching!
+2. Enter the default PIN: **`1234`** (It will be hashed automatically upon first login).
+3. **Add a child** — choose an avatar and set a daily limit.
+4. **Download/Upload a video** — go to the Videos tab.
+5. **Add Subtitles** — Click the **"CC"** button on any video to upload an `.srt` or `.vtt` file.
+6. Go back to the home screen — your child can now select their profile and start watching!
 
 ---
 
@@ -69,7 +72,10 @@ Open **[http://localhost:3000](http://localhost:3000)**.
 
 ---
 
-## 🔐 How It Works
+## 🔐 Security & Anti-Cheat
+
+### PIN Hashing & Rate Limiting
+SafeTube uses `scrypt` to securely hash Admin PINs. If you have a plaintext PIN from an older version, it will be automatically upgraded to a hashed format when you next log in. To prevent brute-force attacks, the Admin login is rate-limited to 5 failures per minute.
 
 ### The Beacon (Anti-Cheat Time Tracking)
 

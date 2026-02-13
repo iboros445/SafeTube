@@ -270,7 +270,18 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                         onTimeUpdate={handleTimeUpdate}
                         muted={isMuted}
                         onContextMenu={(e) => e.preventDefault()}
-                    />
+                    >
+                        {selectedVideo.subtitlePath && (
+                            <track
+                                kind="subtitles"
+                                src={`/api/media/${selectedVideo.subtitlePath}`}
+                                srcLang="en"
+                                label="English"
+                                default
+                            />
+                        )}
+                    </video>
+
 
                     {/* Play/Pause overlay */}
                     {showPlayOverlay && (

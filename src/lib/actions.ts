@@ -219,10 +219,14 @@ export async function deleteVideo(pin: string, videoId: number) {
     const thumbPath = video.thumbnailPath
         ? path.join(mediaDir, video.thumbnailPath)
         : null;
+    const subtitlePath = video.subtitlePath
+        ? path.join(mediaDir, video.subtitlePath)
+        : null;
 
     try {
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (thumbPath && fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+        if (subtitlePath && fs.existsSync(subtitlePath)) fs.unlinkSync(subtitlePath);
     } catch (e) {
         console.error("Error deleting files:", e);
     }
@@ -390,3 +394,67 @@ export async function getChildSessions(childId: number) {
         .from(sessions)
         .where(and(eq(sessions.childId, childId), eq(sessions.active, true)));
 }
+
+// ─── Subtitle Upload ────────────────────────────────────────────────
+
+export async function uploadSubtitle(pin: string, videoId: number, formData: FormData) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    const file = formData.get("file") as File;
+    if (!file) return { success: false, error: "No file uploaded" };
+
+    const ext = path.extname(file.name).toLowerCase();
+    if (ext !== ".srt" && ext !== ".vtt") {
+        return { success: false, error: "Invalid file type. Only .srt or .vtt allowed." };
+    }
+
+    const subtitlesDir = path.join(process.cwd(), "media", "subtitles");
+    if (!fs.existsSync(subtitlesDir)) {
+        fs.mkdirSync(subtitlesDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const basename = `sub_${videoId}_${timestamp}`;
+    const originalFilename = `${basename}${ext}`;
+    const originalPath = path.join(subtitlesDir, originalFilename);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(originalPath, buffer);
+
+    let finalFilename = originalFilename;
+
+    // Convert SRT to VTT if needed
+    if (ext === ".srt") {
+        const vttFilename = `${basename}.vtt`;
+        const vttPath = path.join(subtitlesDir, vttFilename);
+
+        try {
+            const { spawn } = await import("child_process");
+            await new Promise<void>((resolve, reject) => {
+                const ffmpeg = spawn("ffmpeg", ["-i", originalPath, vttPath]);
+                ffmpeg.on("close", (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error(`FFmpeg exited with code ${code}`));
+                });
+                ffmpeg.on("error", (err) => reject(err));
+            });
+            finalFilename = vttFilename;
+        } catch (error) {
+            console.error("Subtitle conversion error:", error);
+            return { success: false, error: "Failed to convert SRT to VTT" };
+        }
+    }
+
+    // Update DB
+    await db
+        .update(videos)
+        .set({ subtitlePath: `subtitles/${finalFilename}` })
+        .where(eq(videos.id, videoId));
+
+    revalidatePath("/admin");
+    revalidatePath("/child");
+    return { success: true };
+}
+
+

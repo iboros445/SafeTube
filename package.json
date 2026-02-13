@@ -13,24 +13,24 @@
         "db:studio": "drizzle-kit studio"
     },
     "dependencies": {
-        "@libsql/client": "^0.14.0",
+        "@libsql/client": "^0.17.0",
         "clsx": "^2.1.1",
         "date-fns": "^4.1.0",
-        "drizzle-orm": "^0.38.0",
-        "lucide-react": "^0.469.0",
-        "next": "15.1.0",
+        "drizzle-orm": "^0.45.1",
+        "lucide-react": "^0.564.0",
+        "next": "^16.1.6",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "tailwind-merge": "^2.6.0"
+        "tailwind-merge": "^3.4.0"
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4.0.0",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.19.11",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
-        "drizzle-kit": "^0.30.0",
-        "eslint": "^9.0.0",
-        "eslint-config-next": "15.1.0",
+        "drizzle-kit": "^0.31.9",
+        "eslint": "^9.20.1",
+        "eslint-config-next": "16.1.6",
         "tailwindcss": "^4.0.0",
         "typescript": "^5.0.0"
     }
