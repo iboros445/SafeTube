@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/src/db";
+import { db, dbReady } from "@/src/db";
 import { children, videos, sessions, settings, videoProgress } from "@/src/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import {
@@ -15,9 +15,16 @@ import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
 
+// ─── Ensure DB is ready before any action ─────────────────────────
+
+async function ensureDb() {
+    await dbReady;
+}
+
 // ─── Child Session Actions ─────────────────────────────────────────
 
 export async function loginChild(childId: number) {
+    await ensureDb();
     const [child] = await db
         .select()
         .from(children)
@@ -335,6 +342,41 @@ export async function getVideoProgressMap(childId: number) {
         map[row.videoId] = row.progressSeconds;
     }
     return map;
+}
+
+// ─── Child Watch History (Admin) ────────────────────────────────────
+
+export async function getChildWatchHistory(childId: number) {
+    const rows = await db
+        .select({
+            progressId: videoProgress.id,
+            videoId: videoProgress.videoId,
+            progressSeconds: videoProgress.progressSeconds,
+            updatedAt: videoProgress.updatedAt,
+            title: videos.title,
+            thumbnailPath: videos.thumbnailPath,
+            durationSeconds: videos.durationSeconds,
+        })
+        .from(videoProgress)
+        .innerJoin(videos, eq(videoProgress.videoId, videos.id))
+        .where(eq(videoProgress.childId, childId))
+        .orderBy(desc(videoProgress.updatedAt));
+
+    return rows;
+}
+
+export async function updateVideoProgressAdmin(
+    pin: string,
+    childId: number,
+    videoId: number,
+    newProgressSeconds: number
+) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    await saveVideoProgress(childId, videoId, Math.max(0, Math.round(newProgressSeconds)));
+    revalidatePath("/admin");
+    return { success: true };
 }
 
 // ─── Avatar Photo Upload ───────────────────────────────────────────
