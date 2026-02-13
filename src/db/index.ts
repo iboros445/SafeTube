@@ -90,5 +90,15 @@ async function initDb() {
   }
 }
 
-// Run init immediately
-initDb().catch(console.error);
+// Only initialize at runtime, not during build
+// Check if we're in a build environment (Next.js sets this during build)
+if (process.env.NODE_ENV !== 'production' || typeof window === 'undefined') {
+  // Defer initialization until first actual use to avoid running during build
+  // We'll call this from server components/API routes on first request
+  if (process.env.NEXT_PHASE !== 'phase-production-build') {
+    initDb().catch(console.error);
+  }
+}
+
+// Export initDb so it can be called manually if needed
+export { initDb };

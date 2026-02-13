@@ -1,8 +1,12 @@
 import { getChildren, getVideos, getSettings } from "@/src/lib/actions";
 import AdminDashboard from "@/src/components/AdminDashboard";
 import { getAdminSession } from "@/src/lib/auth";
+import { initDb } from "@/src/db";
 
 export default async function AdminPage() {
+    // Ensure database is initialized on first request
+    await initDb();
+
     const [childrenList, videoList, settingsMap, isAdmin] = await Promise.all([
         getChildren(),
         getVideos(),
