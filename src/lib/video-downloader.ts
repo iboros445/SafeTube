@@ -24,6 +24,81 @@ export interface DownloadProgress {
     message?: string;
 }
 
+// ─── URL Type Detection ──────────────────────────────────────────────
+
+export type UrlType = "video" | "playlist" | "channel" | "unknown";
+
+export function detectUrlType(url: string): UrlType {
+    if (/[?&]list=/.test(url)) return "playlist";
+    if (/(\/channel\/|\/c\/|\/user\/|\/@)/.test(url)) return "channel";
+    if (/(youtu\.be\/|[?&]v=|\/watch\?)/.test(url)) return "video";
+    return "unknown";
+}
+
+export interface PlaylistEntry {
+    url: string;
+    title: string;
+    duration?: number;
+}
+
+export async function listPlaylistVideos(
+    url: string,
+    limit?: number
+): Promise<PlaylistEntry[]> {
+    return new Promise((resolve) => {
+        const args = [
+            "--flat-playlist",
+            "--dump-json",
+            "--no-download",
+            "--js-runtimes", "node",
+            "--remote-components", "ejs:github",
+        ];
+        if (limit) {
+            args.push("--playlist-end", String(limit));
+        }
+        args.push(url);
+
+        const proc = spawn("yt-dlp", args);
+        let data = "";
+
+        proc.stdout.on("data", (chunk) => { data += chunk.toString(); });
+        proc.stderr.on("data", () => { /* ignore error info */ });
+
+        proc.on("close", () => {
+            try {
+                const entries: PlaylistEntry[] = data
+                    .trim()
+                    .split("\n")
+                    .filter(Boolean)
+                    .map((line) => {
+                        const info = JSON.parse(line);
+                        // webpage_url is always a full URL; info.url may be just a video ID or a full URL
+                        let videoUrl = info.webpage_url || "";
+                        if (!videoUrl && info.url) {
+                            videoUrl = info.url.startsWith("http")
+                                ? info.url
+                                : `https://www.youtube.com/watch?v=${info.url}`;
+                        }
+                        if (!videoUrl && info.id) {
+                            videoUrl = `https://www.youtube.com/watch?v=${info.id}`;
+                        }
+                        return {
+                            url: videoUrl,
+                            title: info.title || "Untitled",
+                            duration: info.duration || undefined,
+                        };
+                    })
+                    .filter((e) => e.url);
+                resolve(entries);
+            } catch {
+                resolve([]);
+            }
+        });
+
+        proc.on("error", () => resolve([]));
+    });
+}
+
 /**
  * Check if yt-dlp is available on the system PATH.
  */

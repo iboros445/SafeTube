@@ -36,6 +36,12 @@ export const videos = sqliteTable("videos", {
     subtitlePath: text("subtitle_path"),
     durationSeconds: integer("duration_seconds"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    // AI Analysis fields (opt-in, nullable)
+    aiScore: integer("ai_score"),                                        // 1-10 safety score
+    educationalValue: text("educational_value"),                          // e.g. "High - Teaches Physics"
+    pacing: text("pacing"),                                               // e.g. "Slow/Calm", "Hyper-Stimulating"
+    educationalTags: text("educational_tags"),                            // JSON array string
+    isApproved: integer("is_approved", { mode: "boolean" }),              // null = no review, true = approved, false = dismissed
 });
 
 // ─── Video Progress (per-child resume) ─────────────────────────────

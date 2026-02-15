@@ -2,7 +2,7 @@
 
 import { db, dbReady } from "@/src/db";
 import { children, videos, sessions, settings, videoProgress } from "@/src/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import {
     createSession,
     endSession,
@@ -10,7 +10,14 @@ import {
     clearSessionCookie,
     clearAdminSession,
 } from "@/src/lib/auth";
-import { downloadVideo } from "@/src/lib/video-downloader";
+import { downloadVideo, listPlaylistVideos, type PlaylistEntry } from "@/src/lib/video-downloader";
+import {
+    fetchVideoMetadata,
+    fetchAutoSubtitles,
+    analyzeVideo,
+    type AnalysisResult,
+} from "@/src/lib/analysis-service";
+import { getAIConfig, isAIEnabled } from "@/src/lib/ai-actions";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
@@ -19,6 +26,12 @@ import path from "path";
 
 async function ensureDb() {
     await dbReady;
+}
+
+async function getSettingValue(key: string): Promise<string> {
+    await ensureDb();
+    const [row] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
+    return row?.value ?? "";
 }
 
 // ─── Child Session Actions ─────────────────────────────────────────
@@ -195,6 +208,35 @@ export async function downloadVideoAction(pin: string, url: string) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
+    // Check if AI auto-analysis is enabled
+    const aiEnabled = await isAIEnabled();
+    const autoAnalysis = await getSettingValue("ai_auto_analysis");
+
+    if (aiEnabled && autoAnalysis === "true") {
+        // AI Analysis Flow: fetch metadata + subtitles, analyze, return for review
+        try {
+            const config = await getAIConfig();
+            if (!config) {
+                return { success: false, error: "AI is enabled but no valid config found" };
+            }
+
+            const metadata = await fetchVideoMetadata(url);
+            const subtitleText = await fetchAutoSubtitles(url);
+            const analysis = await analyzeVideo(metadata, subtitleText, config);
+
+            return {
+                success: true,
+                pendingReview: true,
+                title: metadata.title,
+                url,
+                analysis,
+            };
+        } catch (err) {
+            return { success: false, error: `AI analysis failed: ${(err as Error).message}` };
+        }
+    }
+
+    // Standard download flow (no AI)
     const result = await downloadVideo(url);
 
     if (!result.success) {
@@ -213,6 +255,56 @@ export async function downloadVideoAction(pin: string, url: string) {
     revalidatePath("/admin");
     revalidatePath("/child");
     return { success: true, title: result.title };
+}
+
+// ─── AI Video Review Actions ───────────────────────────────────────
+
+export async function approveAndDownload(
+    pin: string,
+    url: string,
+    analysis: AnalysisResult
+) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    const result = await downloadVideo(url);
+    if (!result.success) {
+        return { success: false, error: result.error };
+    }
+
+    await db.insert(videos).values({
+        title: result.title!,
+        youtubeUrl: url,
+        localPath: result.filename!,
+        thumbnailPath: result.thumbnailFilename || null,
+        durationSeconds: result.duration || null,
+        createdAt: new Date(),
+        aiScore: analysis.safetyScore,
+        educationalValue: analysis.educationalValue,
+        pacing: analysis.pacing,
+        educationalTags: JSON.stringify(analysis.tags),
+        isApproved: true,
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/child");
+    return { success: true, title: result.title };
+}
+
+export async function dismissVideo(pin: string, url: string) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+    // Simply don't download — no DB record needed
+    return { success: true };
+}
+
+// ─── Playlist Listing (Server Action) ─────────────────────────────
+
+export async function listPlaylistAction(
+    url: string,
+    limit?: number
+): Promise<PlaylistEntry[]> {
+    return listPlaylistVideos(url, limit);
 }
 
 export async function deleteVideo(pin: string, videoId: number) {

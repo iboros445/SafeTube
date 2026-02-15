@@ -55,7 +55,12 @@ async function initDb() {
       thumbnail_path TEXT,
       subtitle_path TEXT,
       duration_seconds INTEGER,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      ai_score INTEGER,
+      educational_value TEXT,
+      pacing TEXT,
+      educational_tags TEXT,
+      is_approved INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS video_progress (
@@ -73,6 +78,12 @@ async function initDb() {
 
     INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pin', '1234');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('retention_days', '7');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_provider', '');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_api_key', '');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_auto_analysis', 'false');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_recommendations', 'false');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_ollama_url', 'http://localhost:11434');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_model', '');
   `);
 
   // Migrate existing databases: add new columns if missing (safe to fail)
@@ -82,6 +93,12 @@ async function initDb() {
     "ALTER TABLE children ADD COLUMN avatar_photo TEXT",
     "ALTER TABLE children ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark'",
     "ALTER TABLE videos ADD COLUMN subtitle_path TEXT",
+    // AI columns
+    "ALTER TABLE videos ADD COLUMN ai_score INTEGER",
+    "ALTER TABLE videos ADD COLUMN educational_value TEXT",
+    "ALTER TABLE videos ADD COLUMN pacing TEXT",
+    "ALTER TABLE videos ADD COLUMN educational_tags TEXT",
+    "ALTER TABLE videos ADD COLUMN is_approved INTEGER",
   ];
   for (const sql of migrations) {
     try { await client.execute(sql); } catch { /* column already exists */ }

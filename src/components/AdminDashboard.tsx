@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Child, Video } from "@/src/db/schema";
 import {
@@ -48,6 +48,13 @@ import {
     Play,
 } from "lucide-react";
 import Avatar from "@/src/components/Avatar";
+import AISettings from "@/src/components/AISettings";
+import ReviewCard from "@/src/components/ReviewCard";
+import BulkDownloadModal from "@/src/components/BulkDownloadModal";
+import DiscoverTab from "@/src/components/DiscoverTab";
+import { isAIEnabled } from "@/src/lib/ai-actions";
+import { approveAndDownload, dismissVideo as dismissVideoAction, listPlaylistAction } from "@/src/lib/actions";
+import type { AnalysisResult } from "@/src/lib/analysis-service";
 
 interface AdminDashboardProps {
     profiles: Child[];
@@ -97,7 +104,14 @@ export default function AdminDashboard({
     const [pinError, setPinError] = useState(false);
 
     // Form States
-    const [activeTab, setActiveTab] = useState<"children" | "videos" | "settings">("children");
+    const [activeTab, setActiveTab] = useState<"children" | "videos" | "settings" | "discover">("children");
+    const [aiEnabled, setAiEnabled] = useState(false);
+
+    // Check AI status on mount
+    useEffect(() => {
+        isAIEnabled().then(setAiEnabled);
+    }, []);
+
     const [showAddChild, setShowAddChild] = useState(false);
     const [newChildName, setNewChildName] = useState("");
     const [newChildLimit, setNewChildLimit] = useState(60);
@@ -111,6 +125,14 @@ export default function AdminDashboard({
     const [downloading, setDownloading] = useState(false);
     const [downloadStatus, setDownloadStatus] = useState("");
     const [subtitlingVideoId, setSubtitlingVideoId] = useState<number | null>(null);
+    const [showBulkModal, setShowBulkModal] = useState(false);
+
+    // AI Pending Reviews
+    const [pendingReviews, setPendingReviews] = useState<Array<{
+        url: string;
+        title: string;
+        analysis: AnalysisResult;
+    }>>([]);
     const subtitleInputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -255,16 +277,17 @@ export default function AdminDashboard({
                 </div>
 
                 {/* Tabs */}
-                <div className={`flex gap-1 p-1 ${tabBg} rounded-xl mb-8 max-w-md animate-fade-in`}>
-                    {(["children", "videos", "settings"] as const).map((tab) => (
+                <div className={`flex gap-1 p-1 ${tabBg} rounded-xl mb-8 ${aiEnabled ? 'max-w-lg' : 'max-w-md'} animate-fade-in`}>
+                    {(["children", "videos", "settings", ...(aiEnabled ? ["discover" as const] : [])] as const).map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
                             className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all capitalize ${activeTab === tab
                                 ? tabActive
                                 : tabInactive
-                                }`}
+                                } ${tab === "discover" ? "flex items-center justify-center gap-1.5" : ""}`}
                         >
+                            {tab === "discover" && <span className="text-xs">✨</span>}
                             {tab}
                         </button>
                     ))}
@@ -898,15 +921,33 @@ export default function AdminDashboard({
                                         className={`flex-1 px-4 py-2.5 rounded-xl ${inputCls} outline-none transition-colors disabled:opacity-50`}
                                     />
                                     <button
+                                        onClick={() => setShowBulkModal(true)}
+                                        className={`px-4 py-2.5 rounded-xl ${btnSurface} text-sm font-medium transition-all flex items-center gap-1.5 hover:ring-1 ring-violet-500/50`}
+                                        title="Bulk download from playlist/channel"
+                                    >
+                                        📋 Bulk
+                                    </button>
+                                    <button
                                         onClick={async () => {
                                             if (!videoUrl.trim()) return;
                                             setDownloading(true);
-                                            setDownloadStatus("Starting download...");
+                                            setDownloadStatus("Analyzing video...");
                                             const result = await downloadVideoAction(pin, videoUrl);
                                             if (result.success) {
-                                                setDownloadStatus(`✅ Downloaded: ${result.title}`);
-                                                setVideoUrl("");
-                                                router.refresh();
+                                                if ((result as { pendingReview?: boolean }).pendingReview) {
+                                                    // AI review mode — show review card
+                                                    setPendingReviews((prev) => [...prev, {
+                                                        url: (result as { url: string }).url,
+                                                        title: result.title || "Untitled",
+                                                        analysis: (result as { analysis: AnalysisResult }).analysis,
+                                                    }]);
+                                                    setDownloadStatus(`🔍 AI analysis complete — review below`);
+                                                    setVideoUrl("");
+                                                } else {
+                                                    setDownloadStatus(`✅ Downloaded: ${result.title}`);
+                                                    setVideoUrl("");
+                                                    router.refresh();
+                                                }
                                             } else {
                                                 setDownloadStatus(`❌ Error: ${result.error}`);
                                             }
@@ -929,6 +970,35 @@ export default function AdminDashboard({
                                     </p>
                                 )}
                             </div>
+
+                            {/* Pending AI Review Cards */}
+                            {pendingReviews.map((review) => (
+                                <ReviewCard
+                                    key={review.url}
+                                    videoTitle={review.title}
+                                    videoUrl={review.url}
+                                    analysis={review.analysis}
+                                    isLight={isLight}
+                                    cardCls={cardCls}
+                                    textPrimary={textPrimary}
+                                    textMuted={textMuted}
+                                    surfaceCls={surfaceCls}
+                                    btnSurface={btnSurface}
+                                    onApprove={async () => {
+                                        const result = await approveAndDownload(pin, review.url, review.analysis);
+                                        if (result.success) {
+                                            setPendingReviews((prev) => prev.filter((r) => r.url !== review.url));
+                                            setDownloadStatus(`✅ Approved & downloaded: ${review.title}`);
+                                            router.refresh();
+                                        }
+                                    }}
+                                    onDismiss={async () => {
+                                        await dismissVideoAction(pin, review.url);
+                                        setPendingReviews((prev) => prev.filter((r) => r.url !== review.url));
+                                        setDownloadStatus(`Dismissed: ${review.title}`);
+                                    }}
+                                />
+                            ))}
 
                             {/* Upload Local Video */}
                             <div className={`${cardCls} p-6`}>
@@ -1262,10 +1332,58 @@ export default function AdminDashboard({
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Intelligence & AI */}
+                            <AISettings
+                                pin={pin}
+                                isLight={isLight}
+                                cardCls={cardCls}
+                                textPrimary={textPrimary}
+                                textMuted={textMuted}
+                                inputCls={inputCls}
+                                btnSurface={btnSurface}
+                                surfaceCls={surfaceCls}
+                                borderCls={borderCls}
+                                onSettingsChange={(enabled) => setAiEnabled(enabled)}
+                            />
                         </div>
                     )
                 }
+
+                {/* ── Discover Tab ──────────────────────────────────────────── */}
+                {
+                    activeTab === "discover" && aiEnabled && (
+                        <DiscoverTab
+                            pin={pin}
+                            isLight={isLight}
+                            cardCls={cardCls}
+                            textPrimary={textPrimary}
+                            textMuted={textMuted}
+                            btnSurface={btnSurface}
+                            surfaceCls={surfaceCls}
+                            onAddToQueue={(query) => {
+                                setVideoUrl(query);
+                                setShowBulkModal(true);
+                            }}
+                        />
+                    )
+                }
             </div>
+
+            {/* Bulk Download Modal */}
+            <BulkDownloadModal
+                pin={pin}
+                isOpen={showBulkModal}
+                onClose={() => setShowBulkModal(false)}
+                onListPlaylist={listPlaylistAction}
+                isLight={isLight}
+                cardCls={cardCls}
+                textPrimary={textPrimary}
+                textMuted={textMuted}
+                inputCls={inputCls}
+                btnSurface={btnSurface}
+                surfaceCls={surfaceCls}
+            />
         </div >
     );
 }
