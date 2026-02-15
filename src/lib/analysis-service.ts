@@ -33,13 +33,20 @@ export interface AnalysisResult {
 
 export async function fetchVideoMetadata(url: string): Promise<VideoMetadata> {
     return new Promise((resolve, reject) => {
-        const proc = spawn("yt-dlp", [
+        const args = [
             "--dump-json",
             "--no-download",
             "--js-runtimes", "node",
             "--remote-components", "ejs:github",
-            url,
-        ]);
+        ];
+
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        if (fs.existsSync(cookiePath)) {
+            args.push("--cookies", cookiePath);
+        }
+        args.push(url);
+
+        const proc = spawn("yt-dlp", args);
 
         let data = "";
         let error = "";
@@ -77,7 +84,7 @@ export async function fetchAutoSubtitles(url: string): Promise<string> {
     const outputTemplate = path.join(TEMP_DIR, tempId);
 
     return new Promise((resolve) => {
-        const proc = spawn("yt-dlp", [
+        const args = [
             "--write-auto-sub",
             "--sub-lang", "en",
             "--sub-format", "vtt",
@@ -85,8 +92,15 @@ export async function fetchAutoSubtitles(url: string): Promise<string> {
             "--js-runtimes", "node",
             "--remote-components", "ejs:github",
             "-o", `${outputTemplate}.%(ext)s`,
-            url,
-        ]);
+        ];
+
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        if (fs.existsSync(cookiePath)) {
+            args.push("--cookies", cookiePath);
+        }
+        args.push(url);
+
+        const proc = spawn("yt-dlp", args);
 
         let error = "";
         proc.stderr.on("data", (chunk) => { error += chunk.toString(); });

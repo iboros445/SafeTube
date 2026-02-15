@@ -8,24 +8,25 @@ SafeTube is a self-hosted web app that lets parents download YouTube videos and 
 
 ## ✨ Features
 
-| Feature | Description |
-|---|---|
-| 🔒 **Ironclad Sessions** | Children select their profile and are cryptographically locked in via HttpOnly cookies. |
-| 🛡️ **Hardened Auth** | PINs are secured with **scrypt hashing** and brute-force protection (rate limiting). |
-| ⏱️ **Beacon Time Tracking** | Heartbeat-based tracking ensures only *active playback* counts. |
-| 🚫 **No Algorithms** | No recommendations or ads. Only parent-approved local files. |
-| 📥 **Local Downloads** | Videos downloaded via `yt-dlp`. No external streaming. |
-| 📤 **Local Video Upload** | Upload MP4/MKV files directly. Durations are accurately extracted via `ffprobe`. |
-| 💬 **Subtitle Support** | Support for `.srt` and `.vtt`. SRTs are auto-converted to WebVTT for playback. |
-| 🎨 **Personalization** | Per-child themes, custom avatars, and an immersive fullscreen player. |
-| 🗑️ **Auto-Cleanup** | Videos and metadata are automatically deleted after a configurable period. |
-| 🐳 **Dockerized** | One command to deploy. Node.js + Python + FFmpeg in a single container. |
+| Feature                     | Description                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------- |
+| 🔒 **Ironclad Sessions**    | Children select their profile and are cryptographically locked in via HttpOnly cookies. |
+| 🛡️ **Hardened Auth**        | PINs are secured with **scrypt hashing** and brute-force protection (rate limiting).    |
+| ⏱️ **Beacon Time Tracking** | Heartbeat-based tracking ensures only _active playback_ counts.                         |
+| 🚫 **No Algorithms**        | No recommendations or ads. Only parent-approved local files.                            |
+| 📥 **Local Downloads**      | Videos downloaded via `yt-dlp`. No external streaming.                                  |
+| 📤 **Local Video Upload**   | Upload MP4/MKV files directly. Durations are accurately extracted via `ffprobe`.        |
+| 💬 **Subtitle Support**     | Support for `.srt` and `.vtt`. SRTs are auto-converted to WebVTT for playback.          |
+| 🎨 **Personalization**      | Per-child themes, custom avatars, and an immersive fullscreen player.                   |
+| 🗑️ **Auto-Cleanup**         | Videos and metadata are automatically deleted after a configurable period.              |
+| 🐳 **Dockerized**           | One command to deploy. Node.js + Python + FFmpeg in a single container.                 |
 
 ---
 
 ## 🚀 Quick Start (Docker)
 
 ### Prerequisites
+
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
 
 ### 1. Clone & Launch
@@ -54,7 +55,8 @@ Navigate to **[http://localhost:3000](http://localhost:3000)** in your browser.
 ## 🖥️ Development (Without Docker)
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - Python 3 with `yt-dlp` installed (`pip install yt-dlp`)
 - FFmpeg installed and on your PATH
 
@@ -75,6 +77,7 @@ Open **[http://localhost:3000](http://localhost:3000)**.
 ## 🔐 Security & Anti-Cheat
 
 ### PIN Hashing & Rate Limiting
+
 SafeTube uses `scrypt` to securely hash Admin PINs. If you have a plaintext PIN from an older version, it will be automatically upgraded to a hashed format when you next log in. To prevent brute-force attacks, the Admin login is rate-limited to 5 failures per minute.
 
 ### The Beacon (Anti-Cheat Time Tracking)
@@ -104,7 +107,7 @@ Child clicks avatar  →  Server sets HttpOnly cookie
                          ├── Child refreshes page? → Cookie persists → Same session
                          ├── Child clears localStorage? → Cookie is HttpOnly → Unaffected
                          └── Child restarts browser? → Cookie persists → Same session
-                         
+
 Only a parent (PIN) can "End Session" from the Admin Dashboard. (Provided the child doesn't know how to clear cookies, or use incognito mode🙏)
 ```
 
@@ -148,22 +151,44 @@ SafeTube/
 
 ## ⚙️ Configuration
 
-| Setting | Default | Where to Change |
-|---|---|---|
-| Admin PIN | `1234` | Admin Dashboard → Settings |
-| Video Retention | 7 days | Admin Dashboard → Settings |
+| Setting          | Default   | Where to Change            |
+| ---------------- | --------- | -------------------------- |
+| Admin PIN        | `1234`    | Admin Dashboard → Settings |
+| Video Retention  | 7 days    | Admin Dashboard → Settings |
 | Daily Time Limit | Per child | Admin Dashboard → Children |
+
+---
+
+---
+
+## 🍪 YouTube Cookies & Authentication
+
+If you encounter **"Sign in to confirm you’re not a bot"** errors or need to download **age-restricted content**, you must provide YouTube cookies.
+
+### How to get your cookies:
+
+1.  **Install a browser extension** that exports cookies in Netscape format.
+    - Chrome/Edge: [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflccgomjciqhfv)
+    - Firefox: [Get cookies.txt LOCALLY](https://addons.mozilla.org/en-US/firefox/addon/get-cookies-txt-locally/)
+2.  **Log in to YouTube** in your browser.
+3.  **Click the extension icon** and export your cookies for `youtube.com`.
+4.  **Copy the content** of the exported file.
+5.  **Go to SafeTube**: Admin Dashboard → Settings → **YouTube Configuration**.
+6.  **Paste** the cookies into the text area and click **Save Cookies**.
+
+SafeTube will now use your session to authenticate downloads, bypassing most restrictions.
 
 ---
 
 ## 🛟 Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Video won't download | Make sure `yt-dlp` and `ffmpeg` are installed. In Docker, these are included automatically. |
-| "Time's Up" appears immediately | Go to Admin Dashboard → find the child → click the refresh icon to reset their daily time. |
-| Child stuck on a session | Go to Admin Dashboard → find the child → click "End Session" (door icon). |
-| Forgot admin PIN | Stop the container, delete `data/safetube.db`, and restart. The default PIN `1234` will be restored. |
+| Problem                           | Solution                                                                                                                                                                      |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Video won't download              | Make sure `yt-dlp` and `ffmpeg` are installed. In Docker, these are included automatically.                                                                                   |
+| **"Sign in to confirm..." error** | YouTube is blocking the download. Go to **Admin Dashboard → Settings → YouTube Configuration**. Paste your `cookies.txt` (Netscape format) to bypass this using your account. |
+| "Time's Up" appears immediately   | Go to Admin Dashboard → find the child → click the refresh icon to reset their daily time.                                                                                    |
+| Child stuck on a session          | Go to Admin Dashboard → find the child → click "End Session" (door icon).                                                                                                     |
+| Forgot admin PIN                  | Stop the container, delete `data/safetube.db`, and restart. The default PIN `1234` will be restored.                                                                          |
 
 ---
 

@@ -53,6 +53,12 @@ export async function listPlaylistVideos(
             "--js-runtimes", "node",
             "--remote-components", "ejs:github",
         ];
+        
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        if (fs.existsSync(cookiePath)) {
+            args.push("--cookies", cookiePath);
+        }
+
         if (limit) {
             args.push("--playlist-end", String(limit));
         }
@@ -191,15 +197,23 @@ export async function downloadVideo(
 
     return new Promise((resolve) => {
         // First, get video info
-        const infoProc = spawn("yt-dlp", [
+        const infoArgs = [
             "--dump-json",
             "--no-download",
             "--js-runtimes",
             "node",
             "--remote-components",
             "ejs:github",
-            url,
-        ]);
+        ];
+
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        if (fs.existsSync(cookiePath)) {
+            infoArgs.push("--cookies", cookiePath);
+        }
+
+        infoArgs.push(url);
+
+        const infoProc = spawn("yt-dlp", infoArgs);
 
         let infoData = "";
         let infoError = "";
@@ -255,7 +269,7 @@ export async function downloadVideo(
             });
 
             // Download video
-            const dlProc = spawn("yt-dlp", [
+            const dlArgs = [
                 "-f",
                 "bestvideo[height<=720]+bestaudio/best[height<=720]",
                 "--merge-output-format",
@@ -269,8 +283,15 @@ export async function downloadVideo(
                 "ejs:github",
                 "-o",
                 outputPath,
-                url,
-            ]);
+            ];
+
+            if (fs.existsSync(cookiePath)) {
+                dlArgs.push("--cookies", cookiePath);
+            }
+
+            dlArgs.push(url);
+
+            const dlProc = spawn("yt-dlp", dlArgs);
 
             let dlError = "";
 

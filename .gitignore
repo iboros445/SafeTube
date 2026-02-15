@@ -54,3 +54,5 @@ media/
 # AI Agent artifacts (if any)
 .agent/
 brain/
+ 
+cookies.txt

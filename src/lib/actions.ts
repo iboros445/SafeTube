@@ -402,6 +402,26 @@ export async function updateSetting(pin: string, key: string, value: string) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
+    // Side effect: Write cookies to file if key is youtube_cookies
+    if (key === "youtube_cookies") {
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        // If value is empty, maybe delete the file?
+        if (!value.trim()) {
+            if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
+        } else {
+            fs.writeFileSync(cookiePath, value);
+        }
+    }
+
+    if (key === "youtube_cookies") {
+        const cookiePath = path.join(process.cwd(), "cookies.txt");
+        if (!value.trim()) {
+            if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
+        } else {
+            fs.writeFileSync(cookiePath, value);
+        }
+    }
+
     // Upsert: try update first, insert if no rows affected
     const existing = await db
         .select()

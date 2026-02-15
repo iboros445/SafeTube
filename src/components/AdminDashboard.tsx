@@ -195,6 +195,7 @@ export default function AdminDashboard({
         (settings.admin_theme as "dark" | "light") || "dark"
     );
     const isLight = adminTheme === "light";
+    const [cookieSaved, setCookieSaved] = useState(false);
 
     // Theme helper classes (Slate refinement)
     // Theme helper classes (Slate refinement - Explicit Dark Mode)
@@ -1451,6 +1452,59 @@ export default function AdminDashboard({
                                             {t === "dark" ? "Dark" : "Light"}
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+
+                            {/* YouTube Configuration */}
+                            <div className={`${cardCls} p-6`}>
+                                <h3 className={`font-semibold ${textPrimary} mb-4 flex items-center gap-2`}>
+                                    <Film className="w-5 h-5 text-safetube-accent" />
+                                    YouTube Configuration
+                                </h3>
+                                <div>
+                                    <label className={`block text-sm font-medium ${textMuted} mb-1`}>
+                                        YouTube Cookies (Netscape format)
+                                    </label>
+                                    <p className={`text-xs ${textMuted} opacity-70 mb-3`}>
+                                        Paste the content of your cookies.txt file here to bypass bot detection and age restrictions.
+                                        Use an extension like "Get cookies.txt LOCALLY" to export them.
+                                    </p>
+                                    <textarea
+                                        className={`w-full ${inputCls} p-3 text-sm focus:outline-none h-32 font-mono scrollbar-thin`}
+                                        placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;FALSE&#9;1761234567&#9;VISITOR_INFO1_LIVE&#9;AiIw..."
+                                        defaultValue={settings.youtube_cookies || ""}
+                                        onBlur={(e) => updateSetting(pin, "youtube_cookies", e.target.value)}
+                                    />
+                                    <div className="flex justify-end mt-2">
+                                        <button
+                                            className={`text-xs px-3 py-1.5 rounded-lg transition-all font-medium border flex items-center gap-1.5 ${cookieSaved
+                                                ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                                : "bg-safetube-accent/10 hover:bg-safetube-accent/20 text-safetube-accent border-safetube-accent/20"
+                                                }`}
+                                            onClick={async (e) => {
+                                                const textarea = e.currentTarget.parentElement?.previousElementSibling as HTMLTextAreaElement;
+                                                if (textarea) {
+                                                    setActionLoading("cookies");
+                                                    await updateSetting(pin, "youtube_cookies", textarea.value);
+                                                    setActionLoading(null);
+                                                    setCookieSaved(true);
+                                                    setTimeout(() => setCookieSaved(false), 2000);
+                                                }
+                                            }}
+                                            disabled={actionLoading === "cookies"}
+                                        >
+                                            {actionLoading === "cookies" ? (
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : cookieSaved ? (
+                                                <>
+                                                    <Check className="w-3 h-3" />
+                                                    Saved!
+                                                </>
+                                            ) : (
+                                                "Save Cookies"
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
