@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import type { QueueJob } from "@/src/lib/channel-worker";
 import {
     X,
     Loader2,
@@ -21,15 +22,7 @@ interface PlaylistEntry {
     selected?: boolean;
 }
 
-interface QueueJob {
-    id: string;
-    url: string;
-    title: string;
-    status: "pending" | "downloading" | "done" | "error";
-    error?: string;
-}
-
-interface BulkDownloadModalProps {
+interface DownloadManagerProps {
     pin: string;
     isOpen: boolean;
     onClose: () => void;
@@ -41,6 +34,7 @@ interface BulkDownloadModalProps {
     inputCls: string;
     btnSurface: string;
     surfaceCls: string;
+    queueJobs: QueueJob[];
 }
 
 function formatDuration(seconds?: number) {
@@ -50,7 +44,7 @@ function formatDuration(seconds?: number) {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function BulkDownloadModal({
+export default function DownloadManager({
     pin,
     isOpen,
     onClose,
@@ -62,27 +56,14 @@ export default function BulkDownloadModal({
     inputCls,
     btnSurface,
     surfaceCls,
-}: BulkDownloadModalProps) {
+    queueJobs,
+}: DownloadManagerProps) {
     const [url, setUrl] = useState("");
     const [loading, setLoading] = useState(false);
     const [entries, setEntries] = useState<PlaylistEntry[]>([]);
     const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
-    const [queueJobs, setQueueJobs] = useState<QueueJob[]>([]);
     const [showQueue, setShowQueue] = useState(false);
-
-    // Poll queue status
-    useEffect(() => {
-        if (!isOpen) return;
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch("/api/queue");
-                const data = await res.json();
-                setQueueJobs(data.jobs || []);
-            } catch { /* ignore */ }
-        }, 2000);
-        return () => clearInterval(interval);
-    }, [isOpen]);
 
     const fetchPlaylist = async (limit?: number) => {
         if (!url.trim()) return;
@@ -156,8 +137,7 @@ export default function BulkDownloadModal({
 
     const selectedCount = entries.filter((e) => e.selected).length;
     const activeJobs = queueJobs.filter((j) => j.status === "pending" || j.status === "downloading");
-    const doneJobs = queueJobs.filter((j) => j.status === "done");
-    const errorJobs = queueJobs.filter((j) => j.status === "error");
+    const doneJobs = queueJobs.filter((j) => j.status === "done" || j.status === "error");
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -165,8 +145,8 @@ export default function BulkDownloadModal({
                 {/* Header */}
                 <div className="p-6 pb-3 flex items-center justify-between border-b border-white/10">
                     <div>
-                        <h2 className={`text-lg font-bold ${textPrimary}`}>Bulk Download</h2>
-                        <p className={`text-xs ${textMuted}`}>Add entire channels or playlists</p>
+                        <h2 className={`text-lg font-bold ${textPrimary}`}>Download Manager</h2>
+                        <p className={`text-xs ${textMuted}`}>Add videos & view progress</p>
                     </div>
                     <button onClick={onClose} className={`p-2 rounded-lg ${btnSurface}`}>
                         <X className="w-5 h-5" />
@@ -179,7 +159,7 @@ export default function BulkDownloadModal({
                     <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs leading-relaxed">
                         <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                            <strong>Heads up:</strong> Bulk downloads skip AI safety analysis. Only bulk download from <strong>trusted sources</strong> and channels you have already reviewed and confirmed are suitable for your children.
+                            <strong>Heads up:</strong> Bulk downloads skip AI safety analysis. Only bulk download from <strong>trusted sources</strong>.
                         </span>
                     </div>
 
@@ -191,7 +171,7 @@ export default function BulkDownloadModal({
                                     type="url"
                                     value={url}
                                     onChange={(e) => setUrl(e.target.value)}
-                                    placeholder="Paste playlist or channel URL..."
+                                    placeholder="Paste YouTube video, playlist or channel URL..."
                                     className={`flex-1 px-4 py-2.5 rounded-xl ${inputCls} outline-none text-sm`}
                                 />
                             </div>
@@ -317,7 +297,23 @@ export default function BulkDownloadModal({
                                             onClick={() => setShowQueue(false)}
                                             className={`text-xs ${textMuted} hover:${textPrimary}`}
                                         >
-                                            ← Back
+                                            {/* Logic fix: This button only appears if !showQueue, which is weird. 
+                                                If we are in queue view (showQueue=true), we want a back button to go to input.
+                                                If we are in input view, we don't need back.
+                                             */}
+                                        </button>
+                                    )}
+                                    {/* Actually, the previous logic was !showQueue... wait. 
+                                        If showQueue is true, we render the queue.
+                                        The user wants a button to go BACK to the input.
+                                        So it should be render if showQueue is TRUE.
+                                    */}
+                                    {showQueue && (
+                                        <button
+                                            onClick={() => setShowQueue(false)}
+                                            className={`text-xs ${textMuted} hover:${textPrimary}`}
+                                        >
+                                            ← Add More
                                         </button>
                                     )}
                                     {doneJobs.length > 0 && (
@@ -352,9 +348,17 @@ export default function BulkDownloadModal({
                                         <span className={`text-sm ${textPrimary} truncate flex-1`}>
                                             {job.title}
                                         </span>
-                                        <span className={`text-xs ${textMuted} capitalize flex-shrink-0`}>
-                                            {job.status}
-                                        </span>
+                                        {job.status === "downloading" && job.progress ? (
+                                            <div className="flex items-center gap-2 min-w-[3rem] justify-end">
+                                                <span className="text-xs font-mono text-violet-400">
+                                                    {job.progress.toFixed(0)}%
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className={`text-xs ${textMuted} capitalize flex-shrink-0`}>
+                                                {job.status}
+                                            </span>
+                                        )}
                                     </div>
                                 ))}
 

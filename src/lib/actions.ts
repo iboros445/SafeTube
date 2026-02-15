@@ -10,7 +10,8 @@ import {
     clearSessionCookie,
     clearAdminSession,
 } from "@/src/lib/auth";
-import { downloadVideo, listPlaylistVideos, type PlaylistEntry } from "@/src/lib/video-downloader";
+import { downloadVideo, listPlaylistVideos, searchYouTube, type PlaylistEntry, type SearchResult } from "@/src/lib/video-downloader";
+import { addToQueue } from "@/src/lib/channel-worker";
 import {
     fetchVideoMetadata,
     fetchAutoSubtitles,
@@ -20,6 +21,7 @@ import {
 import { getAIConfig, isAIEnabled } from "@/src/lib/ai-actions";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
+import fsPromises from "fs/promises";
 import path from "path";
 
 // ─── Ensure DB is ready before any action ─────────────────────────
@@ -236,25 +238,11 @@ export async function downloadVideoAction(pin: string, url: string) {
         }
     }
 
-    // Standard download flow (no AI)
-    const result = await downloadVideo(url);
-
-    if (!result.success) {
-        return { success: false, error: result.error };
-    }
-
-    await db.insert(videos).values({
-        title: result.title!,
-        youtubeUrl: url,
-        localPath: result.filename!,
-        thumbnailPath: result.thumbnailFilename || null,
-        durationSeconds: result.duration || null,
-        createdAt: new Date(),
-    });
-
-    revalidatePath("/admin");
-    revalidatePath("/child");
-    return { success: true, title: result.title };
+    // Standard download flow (no AI) — delegate to queue worker so
+    // the server action returns immediately and doesn't block other actions
+    // (e.g. deleteVideo) due to Next.js per-client action serialization.
+    addToQueue([{ url, title: url }]);
+    return { success: true, queued: true };
 }
 
 // ─── AI Video Review Actions ───────────────────────────────────────
@@ -307,18 +295,34 @@ export async function listPlaylistAction(
     return listPlaylistVideos(url, limit);
 }
 
+// ─── YouTube Search (Server Action) ──────────────────────────────
+
+export async function searchYouTubeAction(
+    query: string,
+    count?: number
+): Promise<SearchResult[]> {
+    return searchYouTube(query, count);
+}
+
 export async function deleteVideo(pin: string, videoId: number) {
+    console.log(`[Delete] req videoId=${videoId}`);
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
+    console.log(`[Delete] PIN valid, fetching video from DB...`);
     const [video] = await db
         .select()
         .from(videos)
         .where(eq(videos.id, videoId))
         .limit(1);
-    if (!video) return { success: false, error: "Video not found" };
+    
+    if (!video) {
+        console.log(`[Delete] Video not found in DB`);
+        return { success: false, error: "Video not found" };
+    }
+    console.log(`[Delete] Video found: ${video.title} (${video.localPath})`);
 
-    // Delete files from disk
+    // Delete files from disk async
     const mediaDir = path.join(process.cwd(), "media");
     const videoPath = path.join(mediaDir, video.localPath);
     const thumbPath = video.thumbnailPath
@@ -328,17 +332,42 @@ export async function deleteVideo(pin: string, videoId: number) {
         ? path.join(mediaDir, video.subtitlePath)
         : null;
 
+    console.log(`[Delete] Starting file deletion...`);
     try {
-        if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-        if (thumbPath && fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
-        if (subtitlePath && fs.existsSync(subtitlePath)) fs.unlinkSync(subtitlePath);
+        const tasks = [];
+        if (fs.existsSync(videoPath)) tasks.push(fsPromises.unlink(videoPath));
+        if (thumbPath && fs.existsSync(thumbPath)) tasks.push(fsPromises.unlink(thumbPath));
+        if (subtitlePath && fs.existsSync(subtitlePath)) tasks.push(fsPromises.unlink(subtitlePath));
+        
+        await Promise.allSettled(tasks);
+        console.log(`[Delete] Files deleted (or attemped)`);
     } catch (e) {
-        console.error("Error deleting files:", e);
+        console.error("[Delete] Error deleting files:", e);
     }
 
+    console.log(`[Delete] Deleting from DB...`);
     await db.delete(videos).where(eq(videos.id, videoId));
+    console.log(`[Delete] DB deleted. Revalidating paths...`);
+    
     revalidatePath("/admin");
     revalidatePath("/child");
+    
+    console.log(`[Delete] Done success`);
+    return { success: true };
+}
+
+export async function bulkDeleteVideos(pin: string, videoIds: number[]) {
+    const valid = await validateAdminPin(pin);
+    if (!valid) return { success: false, error: "Invalid PIN" };
+
+    const results = await Promise.allSettled(videoIds.map(id => deleteVideo(pin, id)));
+    const failures = results.filter(r => r.status === "rejected" || (r.status === "fulfilled" && !r.value.success));
+    
+    if (failures.length > 0) {
+        return { success: false, error: `Failed to delete ${failures.length} videos` };
+    }
+
+    revalidatePath("/admin");
     return { success: true };
 }
 

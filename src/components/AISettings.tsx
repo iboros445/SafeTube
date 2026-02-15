@@ -315,8 +315,8 @@ export default function AISettings({
                 )}
 
                 {/* Test & Save Buttons */}
-                {provider !== "" && (
-                    <div className="flex gap-2 pt-2">
+                <div className="flex gap-2 pt-2">
+                    {provider !== "" && (
                         <button
                             onClick={handleTest}
                             disabled={testing}
@@ -329,20 +329,20 @@ export default function AISettings({
                             )}
                             Test Connection
                         </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving || (!dirty && !newApiKey)}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-semibold text-sm transition-all hover:from-violet-600 hover:to-fuchsia-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {saving ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Save className="w-4 h-4" />
-                            )}
-                            Save Settings
-                        </button>
-                    </div>
-                )}
+                    )}
+                    <button
+                        onClick={handleSave}
+                        disabled={saving || (!dirty && !newApiKey && provider !== "")}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-semibold text-sm transition-all hover:from-violet-600 hover:to-fuchsia-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {saving ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Save className="w-4 h-4" />
+                        )}
+                        Save Settings
+                    </button>
+                </div>
 
                 {/* Test Result */}
                 {testResult && (

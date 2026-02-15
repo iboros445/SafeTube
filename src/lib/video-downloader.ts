@@ -99,6 +99,67 @@ export async function listPlaylistVideos(
     });
 }
 
+// ─── YouTube Search ──────────────────────────────────────────────────
+
+export interface SearchResult {
+    url: string;
+    title: string;
+    duration?: number;
+    channel?: string;
+    thumbnail?: string;
+}
+
+export async function searchYouTube(
+    query: string,
+    count: number = 5
+): Promise<SearchResult[]> {
+    return new Promise((resolve) => {
+        const args = [
+            `ytsearch${count}:${query}`,
+            "--flat-playlist",
+            "--dump-json",
+            "--no-download",
+            "--js-runtimes", "node",
+            "--remote-components", "ejs:github",
+        ];
+
+        const proc = spawn("yt-dlp", args);
+        let data = "";
+
+        proc.stdout.on("data", (chunk) => { data += chunk.toString(); });
+        proc.stderr.on("data", () => { /* ignore */ });
+
+        proc.on("close", () => {
+            try {
+                const results: SearchResult[] = data
+                    .trim()
+                    .split("\n")
+                    .filter(Boolean)
+                    .map((line) => {
+                        const info = JSON.parse(line);
+                        let videoUrl = info.webpage_url || info.url || "";
+                        if (!videoUrl && info.id) {
+                            videoUrl = `https://www.youtube.com/watch?v=${info.id}`;
+                        }
+                        return {
+                            url: videoUrl,
+                            title: info.title || "Untitled",
+                            duration: info.duration || undefined,
+                            channel: info.channel || info.uploader || undefined,
+                            thumbnail: info.thumbnail || undefined,
+                        };
+                    })
+                    .filter((e) => e.url);
+                resolve(results);
+            } catch {
+                resolve([]);
+            }
+        });
+
+        proc.on("error", () => resolve([]));
+    });
+}
+
 /**
  * Check if yt-dlp is available on the system PATH.
  */

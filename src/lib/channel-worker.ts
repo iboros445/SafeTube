@@ -2,6 +2,7 @@ import { downloadVideo } from "@/src/lib/video-downloader";
 import { db, dbReady } from "@/src/db";
 import { videos } from "@/src/db/schema";
 import { revalidatePath } from "next/cache";
+import { fetchVideoMetadata } from "@/src/lib/analysis-service";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -20,12 +21,25 @@ export interface QueueState {
     concurrency: number;
 }
 
-// ─── In-Memory Queue ─────────────────────────────────────────────────
+// ─── In-Memory Queue (Singleton) ──────────────────────────────────────
 
-const queue: QueueJob[] = [];
-let isRunning = false;
+const globalForQueue = globalThis as unknown as {
+    safeTubeQueue: QueueJob[];
+    safeTubeIsRunning: boolean;
+};
+
+const queue = globalForQueue.safeTubeQueue || [];
+if (process.env.NODE_ENV !== "production") globalForQueue.safeTubeQueue = queue;
+
+let isRunning = globalForQueue.safeTubeIsRunning || false;
 const MAX_CONCURRENT = 2;
-let activeCount = 0;
+let activeCount = 0; // functional active count, reset on module load but queue persists
+
+// Update global state when isRunning changes
+function setRunning(value: boolean) {
+    isRunning = value;
+    if (process.env.NODE_ENV !== "production") globalForQueue.safeTubeIsRunning = value;
+}
 
 export function getQueueState(): QueueState {
     return {
@@ -64,7 +78,7 @@ export function clearCompletedJobs() {
 // ─── Queue Processor ─────────────────────────────────────────────────
 
 async function processQueue() {
-    isRunning = true;
+    setRunning(true);
 
     while (true) {
         // Find next pending job
@@ -92,13 +106,62 @@ async function processQueue() {
         await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    isRunning = false;
+    setRunning(false);
 }
 
 async function processJob(job: QueueJob) {
     try {
+        console.log(`[Worker] Starting job: ${job.url}`);
         await dbReady;
-        const result = await downloadVideo(job.url);
+        console.log(`[Worker] DB Ready, checking for duplicates...`);
+        
+        // check for existing video with same URL
+        const existing = await db.query.videos.findFirst({
+            where: (videos, { eq }) => eq(videos.youtubeUrl, job.url),
+        });
+
+        if (existing) {
+             console.log(`[Worker] Video already exists: ${existing.title} (ID: ${existing.id})`);
+             job.status = "error";
+             job.error = "Video already exists in library";
+             return;
+        }
+
+        console.log(`[Worker] No duplicate URL found, fetching metadata for strict check...`);
+        
+        try {
+            // Get metadata without downloading
+            const metadata = await fetchVideoMetadata(job.url);
+            
+            // Check if title + duration match any existing video
+            if (metadata.title && metadata.duration) {
+                const existingMeta = await db.query.videos.findFirst({
+                    where: (videos, { and, eq, like }) => and(
+                        eq(videos.durationSeconds, metadata.duration!),
+                        // Use strict equality for title to avoid false positives on similar series
+                        eq(videos.title, metadata.title)
+                    ),
+                });
+
+                if (existingMeta) {
+                    console.log(`[Worker] Duplicate content found (matched title+duration): ${existingMeta.title}`);
+                    job.status = "error";
+                    job.error = "Video already exists (matched title & duration)";
+                    return;
+                }
+            }
+
+            // Update title from metadata for better UI
+            job.title = metadata.title;
+            
+        } catch (err) {
+            console.warn(`[Worker] Failed to fetch metadata for dup check, proceeding anyway: ${(err as Error).message}`);
+        }
+
+        console.log(`[Worker] Deduplication passed, starting download...`);
+        const result = await downloadVideo(job.url, (p) => {
+            if (p.percent) job.progress = p.percent;
+        });
 
         if (!result.success) {
             job.status = "error";
@@ -117,6 +180,7 @@ async function processJob(job: QueueJob) {
 
         job.status = "done";
         job.title = result.title || job.title;
+        console.log(`[Worker] Job done: ${job.url}`);
 
         // Trigger revalidation
         try { revalidatePath("/admin"); } catch { /* ignore in non-request context */ }

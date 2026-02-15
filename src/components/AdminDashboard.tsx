@@ -6,12 +6,16 @@ import type { Child, Video } from "@/src/db/schema";
 import {
     verifyPin,
     addChild,
+    addChild as createChildProfile,
     updateChild,
+    updateChild as updateChildProfile,
     deleteChild,
+    deleteChild as deleteChildProfile,
     resetChildTime,
     endChildSession,
     downloadVideoAction,
     deleteVideo,
+    bulkDeleteVideos,
     updatePin,
     updateRetention,
     updateSetting,
@@ -21,6 +25,10 @@ import {
     adminLogout,
     getChildWatchHistory,
     updateVideoProgressAdmin,
+    searchYouTubeAction,
+    listPlaylistAction,
+    dismissVideo as dismissVideoAction,
+    approveAndDownload,
 } from "@/src/lib/actions";
 import {
     Shield,
@@ -46,15 +54,20 @@ import {
     ChevronDown,
     ChevronUp,
     Play,
+    CheckSquare,
+    Square,
 } from "lucide-react";
 import Avatar from "@/src/components/Avatar";
 import AISettings from "@/src/components/AISettings";
 import ReviewCard from "@/src/components/ReviewCard";
-import BulkDownloadModal from "@/src/components/BulkDownloadModal";
+import DownloadManager from "@/src/components/DownloadManager";
 import DiscoverTab from "@/src/components/DiscoverTab";
+// Force rebuild for HMR
 import { isAIEnabled } from "@/src/lib/ai-actions";
-import { approveAndDownload, dismissVideo as dismissVideoAction, listPlaylistAction } from "@/src/lib/actions";
+
+import type { SearchResult } from "@/src/lib/video-downloader";
 import type { AnalysisResult } from "@/src/lib/analysis-service";
+import type { QueueJob } from "@/src/lib/channel-worker";
 
 interface AdminDashboardProps {
     profiles: Child[];
@@ -126,6 +139,32 @@ export default function AdminDashboard({
     const [downloadStatus, setDownloadStatus] = useState("");
     const [subtitlingVideoId, setSubtitlingVideoId] = useState<number | null>(null);
     const [showBulkModal, setShowBulkModal] = useState(false);
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+
+    const [searching, setSearching] = useState(false);
+    const [selectedVideos, setSelectedVideos] = useState<Set<number>>(new Set());
+
+    // Global Queue State
+    const [queueJobs, setQueueJobs] = useState<QueueJob[]>([]);
+
+    // Poll queue status globally
+    useEffect(() => {
+        if (!authenticated) return;
+        
+        const fetchQueue = async () => {
+            try {
+                const res = await fetch("/api/queue");
+                if (res.ok) {
+                    const data = await res.json();
+                    setQueueJobs(data.jobs || []);
+                }
+            } catch { /* ignore */ }
+        };
+
+        fetchQueue();
+        const interval = setInterval(fetchQueue, 1000);
+        return () => clearInterval(interval);
+    }, [authenticated]);
 
     // AI Pending Reviews
     const [pendingReviews, setPendingReviews] = useState<Array<{
@@ -913,11 +952,11 @@ export default function AdminDashboard({
                                 </h3>
                                 <div className="flex gap-3">
                                     <input
-                                        type="url"
+                                        type="text"
                                         value={videoUrl}
-                                        onChange={(e) => setVideoUrl(e.target.value)}
-                                        placeholder="Paste YouTube URL..."
-                                        disabled={downloading}
+                                        onChange={(e) => { setVideoUrl(e.target.value); setSearchResults([]); }}
+                                        placeholder="Paste YouTube URL or search..."
+                                        disabled={downloading || searching}
                                         className={`flex-1 px-4 py-2.5 rounded-xl ${inputCls} outline-none transition-colors disabled:opacity-50`}
                                     />
                                     <button
@@ -930,18 +969,33 @@ export default function AdminDashboard({
                                     <button
                                         onClick={async () => {
                                             if (!videoUrl.trim()) return;
+                                            const looksLikeUrl = /^https?:\/\//.test(videoUrl.trim()) || /youtube\.com|youtu\.be/.test(videoUrl.trim());
+                                            if (!looksLikeUrl) {
+                                                // Search mode
+                                                setSearching(true);
+                                                setDownloadStatus("🔍 Searching YouTube...");
+                                                setSearchResults([]);
+                                                const results = await searchYouTubeAction(videoUrl.trim(), 6);
+                                                setSearchResults(results);
+                                                setDownloadStatus(results.length > 0 ? `Found ${results.length} results — pick one to download` : "No results found");
+                                                setSearching(false);
+                                                return;
+                                            }
                                             setDownloading(true);
+                                            setSearchResults([]);
                                             setDownloadStatus("Analyzing video...");
                                             const result = await downloadVideoAction(pin, videoUrl);
                                             if (result.success) {
                                                 if ((result as { pendingReview?: boolean }).pendingReview) {
-                                                    // AI review mode — show review card
                                                     setPendingReviews((prev) => [...prev, {
                                                         url: (result as { url: string }).url,
                                                         title: result.title || "Untitled",
                                                         analysis: (result as { analysis: AnalysisResult }).analysis,
                                                     }]);
                                                     setDownloadStatus(`🔍 AI analysis complete — review below`);
+                                                    setVideoUrl("");
+                                                } else if ((result as { queued?: boolean }).queued) {
+                                                    setDownloadStatus(`📥 Queued for download — check progress in Bulk panel`);
                                                     setVideoUrl("");
                                                 } else {
                                                     setDownloadStatus(`✅ Downloaded: ${result.title}`);
@@ -953,21 +1007,72 @@ export default function AdminDashboard({
                                             }
                                             setDownloading(false);
                                         }}
-                                        disabled={downloading || !videoUrl.trim()}
+                                        disabled={(downloading || searching) || !videoUrl.trim()}
                                         className="px-6 py-2.5 rounded-xl bg-safetube-accent hover:bg-safetube-accent-hover text-white font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
                                     >
-                                        {downloading ? (
+                                        {(downloading || searching) ? (
                                             <Loader2 className="w-4 h-4 animate-spin" />
                                         ) : (
                                             <Download className="w-4 h-4" />
                                         )}
-                                        {downloading ? "Downloading..." : "Download"}
+                                        {downloading ? "Downloading..." : searching ? "Searching..." : (/^https?:\/\//.test(videoUrl.trim()) || /youtube\.com|youtu\.be/.test(videoUrl.trim()) ? "Download" : videoUrl.trim() ? "Search" : "Download")}
                                     </button>
                                 </div>
                                 {downloadStatus && (
                                     <p className={`mt-3 text-sm ${textMuted} animate-fade-in`}>
                                         {downloadStatus}
                                     </p>
+                                )}
+
+                                {/* Search Results */}
+                                {searchResults.length > 0 && (
+                                    <div className="mt-4 space-y-2">
+                                        {searchResults.map((sr, i) => (
+                                            <button
+                                                key={sr.url + i}
+                                                onClick={async () => {
+                                                    setVideoUrl(sr.url);
+                                                    setSearchResults([]);
+                                                    setDownloading(true);
+                                                    setDownloadStatus(`Downloading: ${sr.title}...`);
+                                                    const result = await downloadVideoAction(pin, sr.url);
+                                                    if (result.success) {
+                                                        if ((result as { pendingReview?: boolean }).pendingReview) {
+                                                            setPendingReviews((prev) => [...prev, {
+                                                                url: (result as { url: string }).url,
+                                                                title: result.title || "Untitled",
+                                                                analysis: (result as { analysis: AnalysisResult }).analysis,
+                                                            }]);
+                                                            setDownloadStatus(`🔍 AI analysis complete — review below`);
+                                                        } else if ((result as { queued?: boolean }).queued) {
+                                                            setDownloadStatus(`📥 Queued: ${sr.title}`);
+                                                        } else {
+                                                            setDownloadStatus(`✅ Downloaded: ${result.title}`);
+                                                            router.refresh();
+                                                        }
+                                                        setVideoUrl("");
+                                                    } else {
+                                                        setDownloadStatus(`❌ Error: ${result.error}`);
+                                                    }
+                                                    setDownloading(false);
+                                                }}
+                                                disabled={downloading}
+                                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${surfaceCls} hover:ring-1 ring-violet-500/30 transition-all text-left disabled:opacity-50`}
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+                                                    {i + 1}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`text-sm font-medium ${textPrimary} truncate`}>{sr.title}</p>
+                                                    <p className={`text-xs ${textMuted} truncate`}>
+                                                        {sr.channel || "Unknown channel"}
+                                                        {sr.duration ? ` • ${Math.floor(sr.duration / 60)}:${(sr.duration % 60).toString().padStart(2, "0")}` : ""}
+                                                    </p>
+                                                </div>
+                                                <Download className={`w-4 h-4 ${textMuted} flex-shrink-0`} />
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
 
@@ -1088,10 +1193,102 @@ export default function AdminDashboard({
                                 )}
                             </div>
 
-                            {/* Videos List */}
+                            {/* Bulk Actions Header */}
+                            {selectedVideos.size > 0 && (
+                                <div className="sticky top-0 z-10 mb-4 p-3 rounded-xl bg-violet-600/90 backdrop-blur-md shadow-xl flex items-center justify-between animate-fade-in border border-violet-400/30">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-semibold text-white px-2">
+                                            {selectedVideos.size} selected
+                                        </span>
+                                        <div className="h-4 w-px bg-white/20"></div>
+                                        <button 
+                                            onClick={() => setSelectedVideos(new Set())}
+                                            className="text-xs text-violet-100 hover:text-white"
+                                        >
+                                            Deselect All
+                                        </button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={async () => {
+                                                if (!confirm(`Are you sure you want to delete ${selectedVideos.size} videos? This cannot be undone.`)) return;
+                                                
+                                                setActionLoading("bulk-delete");
+                                                const ids = Array.from(selectedVideos);
+                                                const res = await bulkDeleteVideos(pin, ids);
+                                                
+                                                if (res.success) {
+                                                    setSelectedVideos(new Set());
+                                                    setDownloadStatus(`✅ Deleted ${ids.length} videos`);
+                                                    setTimeout(() => setDownloadStatus(""), 3000);
+                                                } else {
+                                                    setDownloadStatus(`❌ Error: ${res.error}`);
+                                                }
+                                                setActionLoading(null);
+                                            }}
+                                            disabled={actionLoading === "bulk-delete"}
+                                            className="px-4 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            {actionLoading === "bulk-delete" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                             {/* Videos List Header (Select All) */}
+                             {videos.length > 0 && (
+                                <div className="flex items-center gap-3 px-4 py-2 mb-2">
+                                    <button
+                                        onClick={() => {
+                                            if (selectedVideos.size === videos.length) {
+                                                setSelectedVideos(new Set());
+                                            } else {
+                                                setSelectedVideos(new Set(videos.map(v => v.id)));
+                                            }
+                                        }}
+                                        className={`flex items-center gap-2 text-xs font-medium ${textMuted} hover:${textPrimary} transition-colors`}
+                                    >
+                                        {selectedVideos.size === videos.length ? (
+                                            <>
+                                                <CheckSquare className="w-4 h-4 text-violet-400" />
+                                                Deselect All
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Square className="w-4 h-4" />
+                                                Select All
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                             )}
+
                             {videos.map((video) => (
-                                <div key={video.id} className={`${cardCls} p-4`}>
+                                <div key={video.id} className={`${cardCls} p-4 relative group`}>
                                     <div className="flex items-center gap-4">
+                                        {/* Selection Checkbox */}
+                                        <div className="flex-shrink-0">
+                                            <button
+                                                onClick={() => {
+                                                    const newSet = new Set(selectedVideos);
+                                                    if (newSet.has(video.id)) {
+                                                        newSet.delete(video.id);
+                                                    } else {
+                                                        newSet.add(video.id);
+                                                    }
+                                                    setSelectedVideos(newSet);
+                                                }}
+                                                className="p-1 rounded-md hover:bg-white/5 transition-colors"
+                                            >
+                                                {selectedVideos.has(video.id) ? (
+                                                    <CheckSquare className="w-5 h-5 text-violet-400" />
+                                                ) : (
+                                                    <Square className={`w-5 h-5 ${textMuted} group-hover:text-violet-300 transition-colors`} />
+                                                )}
+                                            </button>
+                                        </div>
+
                                         <div className={`w-24 h-14 rounded-lg ${surfaceCls} flex-shrink-0 overflow-hidden`}>
                                             {video.thumbnailPath ? (
                                                 // eslint-disable-next-line @next/next/no-img-element
@@ -1361,17 +1558,13 @@ export default function AdminDashboard({
                             textMuted={textMuted}
                             btnSurface={btnSurface}
                             surfaceCls={surfaceCls}
-                            onAddToQueue={(query) => {
-                                setVideoUrl(query);
-                                setShowBulkModal(true);
-                            }}
                         />
                     )
                 }
             </div>
 
-            {/* Bulk Download Modal */}
-            <BulkDownloadModal
+            {/* Download Manager Modal */}
+            <DownloadManager
                 pin={pin}
                 isOpen={showBulkModal}
                 onClose={() => setShowBulkModal(false)}
@@ -1383,7 +1576,28 @@ export default function AdminDashboard({
                 inputCls={inputCls}
                 btnSurface={btnSurface}
                 surfaceCls={surfaceCls}
+                queueJobs={queueJobs}
             />
+
+            {/* Floating Download Indicator */}
+            {queueJobs.some(j => j.status === "pending" || j.status === "downloading") && !showBulkModal && (
+                <button
+                    onClick={() => setShowBulkModal(true)}
+                    className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white px-4 py-3 rounded-full shadow-lg flex items-center gap-3 animate-bounce-in hover:scale-105 transition-transform"
+                >
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span className="font-semibold text-sm">
+                        {(() => {
+                            const active = queueJobs.filter(j => j.status === "pending" || j.status === "downloading");
+                            const downloading = active.find(j => j.status === "downloading");
+                            if (downloading && downloading.progress) {
+                                return `Downloading ${downloading.progress.toFixed(0)}%...`;
+                            }
+                            return `Downloading ${active.length} video(s)...`;
+                        })()}
+                    </span>
+                </button>
+            )}
         </div >
     );
 }

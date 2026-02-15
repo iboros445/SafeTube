@@ -25,7 +25,6 @@ interface DiscoverTabProps {
     textMuted: string;
     btnSurface: string;
     surfaceCls: string;
-    onAddToQueue: (query: string) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -59,13 +58,14 @@ export default function DiscoverTab({
     textMuted,
     btnSurface,
     surfaceCls,
-    onAddToQueue,
 }: DiscoverTabProps) {
     const [loading, setLoading] = useState(false);
     const [recs, setRecs] = useState<Recommendation[]>([]);
     const [error, setError] = useState("");
     const [updatedAt, setUpdatedAt] = useState<string | null>(null);
     const [initialLoad, setInitialLoad] = useState(true);
+    const [queuedItems, setQueuedItems] = useState<Set<number>>(new Set());
+    const [queuingIndex, setQueuingIndex] = useState<number | null>(null);
 
     // Load cached recommendations on mount
     useEffect(() => {
@@ -89,6 +89,26 @@ export default function DiscoverTab({
             setError(result.error || "Failed to get recommendations");
         }
         setLoading(false);
+    };
+
+    const addToQueue = async (rec: Recommendation, index: number) => {
+        setQueuingIndex(index);
+        try {
+            const res = await fetch("/api/queue", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    pin,
+                    action: "add",
+                    urls: [{ url: `ytsearch1:${rec.searchQuery}`, title: rec.title }],
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setQueuedItems((prev) => new Set(prev).add(index));
+            }
+        } catch { /* ignore */ }
+        setQueuingIndex(null);
     };
 
     const getCategoryGradient = (category: string) => {
@@ -191,10 +211,18 @@ export default function DiscoverTab({
                                     <ExternalLink className="w-2.5 h-2.5 opacity-50" />
                                 </a>
                                 <button
-                                    onClick={() => onAddToQueue(rec.searchQuery)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${btnSurface} text-xs font-medium transition-all hover:ring-1 ring-violet-500/50`}
+                                    onClick={() => addToQueue(rec, i)}
+                                    disabled={queuedItems.has(i) || queuingIndex === i}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${btnSurface} text-xs font-medium transition-all hover:ring-1 ring-violet-500/50 disabled:opacity-50`}
                                 >
-                                    <Download className="w-3 h-3" /> Add to Queue
+                                    {queuingIndex === i ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : queuedItems.has(i) ? (
+                                        <>✅</>
+                                    ) : (
+                                        <Download className="w-3 h-3" />
+                                    )}
+                                    {queuedItems.has(i) ? "Queued" : "Add to Queue"}
                                 </button>
                             </div>
                         </div>
