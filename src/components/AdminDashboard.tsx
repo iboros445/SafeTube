@@ -56,7 +56,9 @@ import {
     Play,
     CheckSquare,
     Square,
+    Sparkles, // Added
 } from "lucide-react";
+import { toast } from "sonner";
 import Avatar from "@/src/components/Avatar";
 import AISettings from "@/src/components/AISettings";
 import ReviewCard from "@/src/components/ReviewCard";
@@ -162,7 +164,7 @@ export default function AdminDashboard({
         };
 
         fetchQueue();
-        const interval = setInterval(fetchQueue, 1000);
+        const interval = setInterval(fetchQueue, 3000);
         return () => clearInterval(interval);
     }, [authenticated]);
 
@@ -196,6 +198,7 @@ export default function AdminDashboard({
     );
     const isLight = adminTheme === "light";
     const [cookieSaved, setCookieSaved] = useState(false);
+    const [showCookieModal, setShowCookieModal] = useState(false);
 
     // Theme helper classes (Slate refinement)
     // Theme helper classes (Slate refinement - Explicit Dark Mode)
@@ -1211,21 +1214,32 @@ export default function AdminDashboard({
                                     </div>
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={async () => {
-                                                if (!confirm(`Are you sure you want to delete ${selectedVideos.size} videos? This cannot be undone.`)) return;
+                                            onClick={() => {
+                                                const currentSelection = new Set(selectedVideos);
+                                                const count = currentSelection.size;
                                                 
-                                                setActionLoading("bulk-delete");
-                                                const ids = Array.from(selectedVideos);
-                                                const res = await bulkDeleteVideos(pin, ids);
-                                                
-                                                if (res.success) {
-                                                    setSelectedVideos(new Set());
-                                                    setDownloadStatus(`✅ Deleted ${ids.length} videos`);
-                                                    setTimeout(() => setDownloadStatus(""), 3000);
-                                                } else {
-                                                    setDownloadStatus(`❌ Error: ${res.error}`);
-                                                }
-                                                setActionLoading(null);
+                                                toast("Are you sure?", {
+                                                    description: `Delete ${count} videos? This cannot be undone.`,
+                                                    action: {
+                                                        label: "Delete",
+                                                        onClick: async () => {
+                                                            setActionLoading("bulk-delete");
+                                                            const ids = Array.from(currentSelection);
+                                                            const res = await bulkDeleteVideos(pin, ids);
+                                                            
+                                                            if (res.success) {
+                                                                setSelectedVideos(new Set());
+                                                                toast.success(`Deleted ${ids.length} videos`);
+                                                            } else {
+                                                                toast.error(`Error: ${res.error}`);
+                                                            }
+                                                            setActionLoading(null);
+                                                        },
+                                                    },
+                                                    cancel: {
+                                                        label: "Cancel",
+                                                    },
+                                                });
                                             }}
                                             disabled={actionLoading === "bulk-delete"}
                                             className="px-4 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
@@ -1320,6 +1334,18 @@ export default function AdminDashboard({
                                             {video.subtitlePath && (
                                                 <span className="text-[10px] bg-safetube-accent/20 text-safetube-accent px-1.5 py-0.5 rounded uppercase font-bold">CC</span>
                                             )}
+                                            
+                                            {/* AI Analysis Button */}
+                                            {video.aiScore !== null && (
+                                                <button
+                                                    onClick={() => setExpandedHistory(expandedHistory === video.id ? null : video.id)}
+                                                    className={`p-2 rounded-lg ${expandedHistory === video.id ? 'bg-amber-500/20 text-amber-500' : btnSurface} hover:text-amber-500 transition-all`}
+                                                    title="View AI Analysis"
+                                                >
+                                                    <Sparkles className="w-4 h-4" />
+                                                </button>
+                                            )}
+
                                             <button
                                                 onClick={() => {
                                                     setSubtitlingVideoId(video.id);
@@ -1379,9 +1405,51 @@ export default function AdminDashboard({
                                         </div>
 
                                     </div>
+                                    
+                                    {/* Expanded Analysis View */}
+                                    {expandedHistory === video.id && video.aiScore !== null && (
+                                        <div className={`mt-4 p-4 rounded-xl ${surfaceCls} border ${borderCls} animate-scale-in`}>
+                                            <div className="flex items-center justify-between mb-3 border-b border-gray-500/10 pb-2">
+                                                <h4 className={`font-semibold ${textPrimary} flex items-center gap-2`}>
+                                                    <Sparkles className="w-4 h-4 text-amber-500" />
+                                                    AI Assessment
+                                                </h4>
+                                                <div className={`px-2 py-1 rounded-lg text-xs font-bold ${
+                                                    (video.aiScore || 0) >= 7 ? "bg-green-500/20 text-green-500" : 
+                                                    (video.aiScore || 0) >= 4 ? "bg-amber-500/20 text-amber-500" : 
+                                                    "bg-red-500/20 text-red-500"
+                                                }`}>
+                                                    Safety Score: {video.aiScore}/10
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid md:grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <span className={`block text-xs font-medium ${textMuted} mb-1 uppercase tracking-wider`}>Educational Value</span>
+                                                    <p className={`${textPrimary}`}>{video.educationalValue || "N/A"}</p>
+                                                </div>
+                                                <div>
+                                                    <span className={`block text-xs font-medium ${textMuted} mb-1 uppercase tracking-wider`}>Pacing</span>
+                                                    <p className={`${textPrimary}`}>{video.pacing || "N/A"}</p>
+                                                </div>
+                                                {video.educationalTags && (
+                                                    <div className="md:col-span-2">
+                                                        <span className={`block text-xs font-medium ${textMuted} mb-1 uppercase tracking-wider`}>Tags</span>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {JSON.parse(video.educationalTags).map((tag: string, i: number) => (
+                                                                <span key={i} className={`px-2 py-0.5 rounded-full text-xs ${isLight ? "bg-slate-200 text-slate-700" : "bg-slate-700 text-slate-300"}`}>
+                                                                    {tag}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
-
+ 
                             {videos.length === 0 && (
                                 <div className="text-center py-12 text-safetube-muted">
                                     <Film className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -1408,11 +1476,11 @@ export default function AdminDashboard({
                                         if (result.success) {
                                             router.refresh();
                                         } else {
-                                            alert(result.error || "Upload failed");
+                                            toast.error(result.error || "Upload failed");
                                         }
                                     } catch (err) {
                                         console.error(err);
-                                        alert("An error occurred during upload");
+                                        toast.error("An error occurred during upload");
                                     } finally {
                                         setActionLoading(null);
                                         setSubtitlingVideoId(null);
@@ -1457,56 +1525,31 @@ export default function AdminDashboard({
 
                             {/* YouTube Configuration */}
                             <div className={`${cardCls} p-6`}>
-                                <h3 className={`font-semibold ${textPrimary} mb-4 flex items-center gap-2`}>
-                                    <Film className="w-5 h-5 text-safetube-accent" />
-                                    YouTube Configuration
-                                </h3>
-                                <div>
-                                    <label className={`block text-sm font-medium ${textMuted} mb-1`}>
-                                        YouTube Cookies (Netscape format)
-                                    </label>
-                                    <p className={`text-xs ${textMuted} opacity-70 mb-3`}>
-                                        Paste the content of your cookies.txt file here to bypass bot detection and age restrictions.
-                                        Use an extension like "Get cookies.txt LOCALLY" to export them.
-                                    </p>
-                                    <textarea
-                                        className={`w-full ${inputCls} p-3 text-sm focus:outline-none h-32 font-mono scrollbar-thin`}
-                                        placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;FALSE&#9;1761234567&#9;VISITOR_INFO1_LIVE&#9;AiIw..."
-                                        defaultValue={settings.youtube_cookies || ""}
-                                        onBlur={(e) => updateSetting(pin, "youtube_cookies", e.target.value)}
-                                    />
-                                    <div className="flex justify-end mt-2">
-                                        <button
-                                            className={`text-xs px-3 py-1.5 rounded-lg transition-all font-medium border flex items-center gap-1.5 ${cookieSaved
-                                                ? "bg-green-500/10 text-green-500 border-green-500/20"
-                                                : "bg-safetube-accent/10 hover:bg-safetube-accent/20 text-safetube-accent border-safetube-accent/20"
-                                                }`}
-                                            onClick={async (e) => {
-                                                const textarea = e.currentTarget.parentElement?.previousElementSibling as HTMLTextAreaElement;
-                                                if (textarea) {
-                                                    setActionLoading("cookies");
-                                                    await updateSetting(pin, "youtube_cookies", textarea.value);
-                                                    setActionLoading(null);
-                                                    setCookieSaved(true);
-                                                    setTimeout(() => setCookieSaved(false), 2000);
-                                                }
-                                            }}
-                                            disabled={actionLoading === "cookies"}
-                                        >
-                                            {actionLoading === "cookies" ? (
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                            ) : cookieSaved ? (
-                                                <>
-                                                    <Check className="w-3 h-3" />
-                                                    Saved!
-                                                </>
-                                            ) : (
-                                                "Save Cookies"
-                                            )}
-                                        </button>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className={`font-semibold ${textPrimary} mb-1 flex items-center gap-2`}>
+                                            <Film className="w-5 h-5 text-safetube-accent" />
+                                            YouTube Options
+                                        </h3>
+                                        <p className={`text-sm ${textMuted}`}>
+                                            Configure authentication to bypass restrictions.
+                                        </p>
                                     </div>
+                                    <button
+                                        onClick={() => setShowCookieModal(true)}
+                                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                                            settings.youtube_cookies
+                                                ? "bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                                                : "bg-safetube-accent/10 text-safetube-accent hover:bg-safetube-accent/20"
+                                        }`}
+                                    >
+                                        {settings.youtube_cookies ? "Cookies Configured" : "Configure Cookies"}
+                                    </button>
                                 </div>
                             </div>
+
+                            {/* Cookie Modal */}
+
 
 
                             {/* Change PIN */}
@@ -1532,7 +1575,8 @@ export default function AdminDashboard({
                                             if (result.success) {
                                                 setPin(newPin);
                                                 setNewPin("");
-                                                alert("PIN updated successfully!");
+                                                setNewPin("");
+                                                toast.success("PIN updated successfully!");
                                             }
                                             setActionLoading(null);
                                         }}
@@ -1651,6 +1695,79 @@ export default function AdminDashboard({
                         })()}
                     </span>
                 </button>
+            )}
+
+            {/* Cookie Modal - Moved to root to avoid stacking context issues */}
+            {showCookieModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
+                    <div className={`${cardCls} w-full max-w-lg p-6 shadow-2xl animate-scale-in`}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className={`text-lg font-bold ${textPrimary}`}>YouTube Cookies</h3>
+                            <button
+                                onClick={() => setShowCookieModal(false)}
+                                className={`p-2 rounded-lg ${btnSurface}`}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="mb-4 space-y-3">
+                            <p className={`text-sm ${textMuted}`}>
+                                Paste your <code>cookies.txt</code> content (Netscape format) below.
+                                This allows SafeTube to access age-restricted videos as you.
+                            </p>
+
+                            <div className="relative">
+                                <textarea
+                                    className={`w-full ${inputCls} p-3 text-xs font-mono h-48 focus:outline-none rounded-xl resize-none`}
+                                    placeholder="# Netscape HTTP Cookie File..."
+                                    defaultValue={settings.youtube_cookies || ""}
+                                    id="cookie-textarea"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowCookieModal(false)}
+                                className={`px-4 py-2 rounded-xl text-sm font-medium ${textMuted} hover:${textPrimary}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all ${cookieSaved
+                                    ? "bg-green-500/10 text-green-500"
+                                    : "bg-safetube-accent text-white hover:bg-safetube-accent/90"
+                                    }`}
+                                onClick={async () => {
+                                    const textarea = document.getElementById("cookie-textarea") as HTMLTextAreaElement;
+                                    if (textarea) {
+                                        setActionLoading("cookies");
+                                        await updateSetting(pin, "youtube_cookies", textarea.value);
+                                        setActionLoading(null);
+                                        setCookieSaved(true);
+                                        setTimeout(() => {
+                                            setCookieSaved(false);
+                                            setShowCookieModal(false);
+                                        }, 1000);
+                                    }
+                                }}
+                                disabled={actionLoading === "cookies"}
+                            >
+                                {actionLoading === "cookies" ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : cookieSaved ? (
+                                    <>
+                                        <Check className="w-4 h-4" />
+                                        Saved
+                                    </>
+                                ) : (
+                                    "Save Configuration"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div >
     );

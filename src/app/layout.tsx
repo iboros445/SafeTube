@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter } from "next/font/google"; // Leave this import alone? No, just ensuring import is there.
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,6 +25,7 @@ export default function RootLayout({
                 className={`${inter.className} min-h-screen bg-safetube-bg text-safetube-text antialiased`}
             >
                 {children}
+                <Toaster position="top-right" theme="system" richColors closeButton />
             </body>
         </html>
     );

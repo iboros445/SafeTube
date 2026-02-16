@@ -198,7 +198,16 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
     openai: "gpt-4o-mini",
     gemini: "gemini-2.0-flash",
     anthropic: "claude-3-5-haiku-latest",
-    ollama: "llama3.2",
+    ollama: "", // Dynamic
+};
+
+// Fallback list: Used when the API is unreachable, the key is missing, or the fetch fails.
+// This ensures the user isn't left with an empty dropdown in those cases.
+export const RECOMMENDED_MODELS: Record<AIProvider, string[]> = {
+    openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    gemini: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+    anthropic: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-20240229"],
+    ollama: [], // Will be populated dynamically
 };
 
 // ─── Factory ─────────────────────────────────────────────────────────

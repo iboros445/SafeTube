@@ -6,8 +6,10 @@ import {
     updateAISettings,
     testAIConnection,
     type AISettings as AISettingsType,
+    getOllamaModels,
+    getAvailableModels,
 } from "@/src/lib/ai-actions";
-import { DEFAULT_MODELS, type AIProvider } from "@/src/lib/llm-service";
+import { DEFAULT_MODELS, RECOMMENDED_MODELS, type AIProvider } from "@/src/lib/llm-service";
 import {
     Brain,
     Key,
@@ -21,6 +23,8 @@ import {
     Server,
     Save,
     TestTube,
+    RefreshCw,
+    ChevronDown,
 } from "lucide-react";
 
 interface AISettingsProps {
@@ -71,6 +75,49 @@ export default function AISettings({
     const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
     const [autoAnalysis, setAutoAnalysis] = useState(false);
     const [recommendations, setRecommendations] = useState(false);
+    
+    // Model fetching state
+    const [availableModels, setAvailableModels] = useState<string[]>([]);
+    const [fetchingModels, setFetchingModels] = useState(false);
+
+    // Initial fetch for models when provider changes or key changes (if needed)
+    useEffect(() => {
+        const fetchModels = async () => {
+            if (!provider) {
+                setAvailableModels([]);
+                return;
+            }
+
+            // For Ollama, we need URL. For others, we need API Key.
+            // Note: We might not have the cleartext API key here if it's saved in DB (masked).
+            // But we can try to fetch using the server action which decrypts it.
+            // If the user entered a NEW key, we should use that.
+            
+            setFetchingModels(true);
+            try {
+                // If user Just typed a new key, pass it. Otherwise pass empty and let server use saved key.
+                const keyToUse = newApiKey || ""; 
+                const models = await getAvailableModels(provider, keyToUse, ollamaUrl);
+                
+                // If no models returned and we have recommendations, fallback to them temporarily?
+                // The server action already falls back to recommended models on error, so we just use what we get.
+                setAvailableModels(models);
+
+                // For Ollama, auto-select the first available model if none is selected
+                if (provider === "ollama" && models.length > 0 && !model) {
+                    setModel(models[0]);
+                    setDirty(true);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setFetchingModels(false);
+            }
+        };
+
+        const timeout = setTimeout(fetchModels, 500); // Debounce
+        return () => clearTimeout(timeout);
+    }, [provider, ollamaUrl, newApiKey, settings?.apiKeySet]);
 
     useEffect(() => {
         getAISettings().then((s) => {
@@ -249,17 +296,88 @@ export default function AISettings({
 
                 {/* Model Name */}
                 {provider !== "" && (
-                    <div>
+                    <div className="relative">
                         <label className={`text-sm ${textMuted} block mb-2`}>Model</label>
-                        <input
-                            type="text"
-                            value={model}
-                            onChange={(e) => { setModel(e.target.value); setDirty(true); }}
-                            placeholder={provider ? DEFAULT_MODELS[provider as AIProvider] || "Model name" : ""}
-                            className={`w-full px-4 py-2.5 rounded-xl ${inputCls} text-sm outline-none transition-colors`}
-                        />
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={model}
+                                onChange={(e) => { setModel(e.target.value); setDirty(true); }}
+                                placeholder={provider ? DEFAULT_MODELS[provider as AIProvider] || "Model name" : ""}
+                                className={`w-full px-4 py-2.5 rounded-xl ${inputCls} text-sm outline-none transition-colors pr-10`}
+                                onFocus={() => setFetchingModels(true)} // reuse this state to show dropdown? No, create new state.
+                            />
+                            {/* Dropdown Toggle / Indicator */}
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {provider === "ollama" && (
+                                     <button
+                                        onClick={async (e) => {
+                                            e.preventDefault();
+                                            setFetchingModels(true);
+                                            const models = await getAvailableModels(provider, newApiKey || "", ollamaUrl);
+                                            setAvailableModels(models);
+                                            setFetchingModels(false);
+                                        }}
+                                        className={`p-1 rounded-lg hover:bg-white/10 transition-colors ${fetchingModels ? "animate-spin" : ""}`}
+                                        title="Refresh Models"
+                                     >
+                                        <RefreshCw className={`w-3.5 h-3.5 ${textMuted}`} />
+                                     </button>
+                                )}
+                                <ChevronDown className={`w-4 h-4 ${textMuted} pointer-events-none`} />
+                            </div>
+
+                            {/* Dropdown Menu (Visible on Focus/Hover or logic) - Using a simple list below input for now */}
+                            <div className={`absolute z-50 left-0 right-0 top-full mt-1 p-1 rounded-xl bg-white dark:bg-slate-900 border ${borderCls} shadow-xl max-h-60 overflow-y-auto hidden group-focus-within:block animate-fade-in`}>
+                                {provider !== "ollama" && (
+                                    <>
+                                        {availableModels.length === 0 && !fetchingModels ? (
+                                             <div className={`px-3 py-4 text-center text-xs ${textMuted}`}>
+                                                {settings?.apiKeySet || newApiKey ? "No models found" : "Enter API key to load models"}
+                                             </div>
+                                        ) : (
+                                            availableModels.map((m) => (
+                                                <button
+                                                    key={m}
+                                                    onClick={() => { setModel(m); setDirty(true); }}
+                                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm ${textPrimary} hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-between`}
+                                                >
+                                                    {m}
+                                                    {model === m && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                                                </button>
+                                            ))
+                                        )}
+                                    </>
+                                )}
+
+                                {provider === "ollama" && (
+                                    <>
+                                        {availableModels.length === 0 ? (
+                                             <div className={`px-3 py-4 text-center text-xs ${textMuted}`}>
+                                                {fetchingModels ? "Scanning..." : "No models found or server unreachable"}
+                                             </div>
+                                        ) : (
+                                            availableModels.map((m) => (
+                                                <button
+                                                    key={m}
+                                                    onClick={() => { setModel(m); setDirty(true); }}
+                                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm ${textPrimary} hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-between`}
+                                                >
+                                                    {m}
+                                                    {model === m && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                                                </button>
+                                            ))
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
                         <p className={`${textMuted} text-xs mt-1`}>
-                            Default: {provider && DEFAULT_MODELS[provider as AIProvider]}
+                           {provider === "ollama" 
+                               ? "Type or select a local model"
+                               : `Default: ${provider && DEFAULT_MODELS[provider as AIProvider]}`
+                           }
                         </p>
                     </div>
                 )}

@@ -11,7 +11,91 @@ import {
     DEFAULT_MODELS,
     type AIProvider,
     type AIConfig,
+    RECOMMENDED_MODELS,
 } from "@/src/lib/llm-service";
+
+export async function getOllamaModels(url: string): Promise<string[]> {
+    try {
+        // Ensure URL has protocol
+        const baseUrl = url.startsWith("http") ? url : `http://${url}`;
+        const res = await fetch(`${baseUrl}/api/tags`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.models?.map((m: any) => m.name) || [];
+    } catch {
+        return [];
+    }
+}
+
+export async function getAvailableModels(provider: AIProvider, apiKey: string, ollamaUrl?: string): Promise<string[]> {
+    if (provider === "ollama") {
+        return getOllamaModels(ollamaUrl || "http://localhost:11434");
+    }
+
+    // If no API Key is provided (e.g. user didn't type one), try to get the stored one
+    let keyToUse = apiKey;
+    if (!keyToUse) {
+        await ensureDb();
+        const storedKey = await getSettingValue("ai_api_key"); // This is encrypted
+        if (storedKey) {
+            keyToUse = decryptApiKey(storedKey);
+        }
+    }
+
+    if (!keyToUse) {
+         // Fallback to recommended lists on error or missing key
+        return RECOMMENDED_MODELS[provider] || [];
+    }
+
+    try {
+        if (provider === "openai") {
+            const res = await fetch("https://api.openai.com/v1/models", {
+                headers: { Authorization: `Bearer ${keyToUse}` },
+            });
+            if (!res.ok) {
+                 return RECOMMENDED_MODELS.openai;
+            }
+            const data = await res.json();
+            return data.data
+                .map((m: any) => m.id)
+                .filter((id: string) => id.includes("gpt"))
+                .sort()
+                .reverse();
+        }
+
+        if (provider === "anthropic") {
+            const res = await fetch("https://api.anthropic.com/v1/models", {
+                headers: { 
+                    "x-api-key": keyToUse,
+                    "anthropic-version": "2023-06-01"
+                },
+            });
+            if (!res.ok) {
+                 return RECOMMENDED_MODELS.anthropic; 
+            }
+            const data = await res.json();
+            return data.data.map((m: any) => m.id).sort();
+        }
+
+        if (provider === "gemini") {
+             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${keyToUse}`);
+             if (!res.ok) {
+                 return RECOMMENDED_MODELS.gemini;
+             }
+             const data = await res.json();
+             return data.models
+                .map((m: any) => m.name.replace("models/", ""))
+                .filter((name: string) => name.includes("gemini"))
+                .sort()
+                .reverse();
+        }
+
+        return RECOMMENDED_MODELS[provider] || [];
+    } catch (e) {
+        console.error("Failed to fetch models:", e);
+        return RECOMMENDED_MODELS[provider] || [];
+    }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 

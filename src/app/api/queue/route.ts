@@ -7,9 +7,9 @@ import {
 import { validateAdminPin } from "@/src/lib/auth";
 
 export async function GET() {
-    console.log("[API/Queue] GET request received");
+    // console.log("[API/Queue] GET request received");
     const state = getQueueState();
-    console.log("[API/Queue] Returning state:", state);
+    // console.log("[API/Queue] Returning state:", state);
     return NextResponse.json(state);
 }
 
