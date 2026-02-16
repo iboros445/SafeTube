@@ -150,6 +150,8 @@ export default function AdminDashboard({
     const [queueJobs, setQueueJobs] = useState<QueueJob[]>([]);
 
     // Poll queue status globally
+    // We also use this to refresh the page when a job finishes
+    const prevJobsRef = useRef<QueueJob[]>([]);
     useEffect(() => {
         if (!authenticated) return;
         
@@ -158,7 +160,20 @@ export default function AdminDashboard({
                 const res = await fetch("/api/queue");
                 if (res.ok) {
                     const data = await res.json();
-                    setQueueJobs(data.jobs || []);
+                    const newJobs = data.jobs || [];
+                    
+                    // If any job transitioned from not-done to done, refresh the page
+                    const hadFinishedJob = newJobs.some((job: QueueJob) => {
+                        const prev = prevJobsRef.current.find(p => p.id === job.id);
+                        return job.status === "done" && (!prev || prev.status !== "done");
+                    });
+
+                    if (hadFinishedJob) {
+                        router.refresh();
+                    }
+
+                    prevJobsRef.current = newJobs;
+                    setQueueJobs(newJobs);
                 }
             } catch { /* ignore */ }
         };
@@ -166,7 +181,7 @@ export default function AdminDashboard({
         fetchQueue();
         const interval = setInterval(fetchQueue, 3000);
         return () => clearInterval(interval);
-    }, [authenticated]);
+    }, [authenticated, router]);
 
     // AI Pending Reviews
     const [pendingReviews, setPendingReviews] = useState<Array<{
@@ -1238,6 +1253,7 @@ export default function AdminDashboard({
                                                     },
                                                     cancel: {
                                                         label: "Cancel",
+                                                        onClick: () => {},
                                                     },
                                                 });
                                             }}

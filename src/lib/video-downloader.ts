@@ -12,6 +12,7 @@ if (!fs.existsSync(MEDIA_DIR)) {
 export interface DownloadResult {
     success: boolean;
     title?: string;
+    resolvedUrl?: string;
     filename?: string;
     thumbnailFilename?: string;
     duration?: number;
@@ -363,6 +364,7 @@ export async function downloadVideo(
                 resolve({
                     success: true,
                     title,
+                    resolvedUrl: videoInfo.webpage_url || url,
                     filename,
                     thumbnailFilename: actualThumbPath || undefined,
                     duration,

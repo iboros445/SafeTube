@@ -1,6 +1,6 @@
 import { downloadVideo } from "@/src/lib/video-downloader";
 import { db, dbReady } from "@/src/db";
-import { videos } from "@/src/db/schema";
+import { videos, settings } from "@/src/db/schema";
 import { revalidatePath } from "next/cache";
 import { fetchVideoMetadata } from "@/src/lib/analysis-service";
 import { eq } from "drizzle-orm";
@@ -170,55 +170,40 @@ async function processJob(job: QueueJob) {
             return;
         }
 
+        // Save to DB
+        const finalUrl = result.resolvedUrl || job.url;
         await db.insert(videos).values({
             title: result.title!,
-            youtubeUrl: job.url,
+            youtubeUrl: finalUrl,
             localPath: result.filename!,
             thumbnailPath: result.thumbnailFilename || null,
             durationSeconds: result.duration || null,
             createdAt: new Date(),
         });
 
-        job.status = "done";
-        job.title = result.title || job.title;
-        console.log(`[Worker] Job done: ${job.url}`);
-
         // Post-download: AI Analysis (if enabled)
         try {
-            await dbReady;
-            // Hacky: access global action to check config. 
-            // Ideally should refactor settings access to a proper service.
-            // But we can check DB directly.
-            const settings = await db.query.settings.findMany();
-            const settingMap = new Map(settings.map(s => [s.key, s.value]));
-            
-            const aiEnabled = (settingMap.get("ai_api_key") || settingMap.get("ai_provider") === "ollama") && settingMap.get("ai_provider");
+            // Check if auto-analysis is enabled
+            const settingsRows = await db.select().from(settings);
+            const settingMap = new Map(settingsRows.map(s => [s.key, s.value]));
             const autoAnalysis = settingMap.get("ai_auto_analysis") === "true";
 
-            if (aiEnabled && autoAnalysis) {
-                console.log(`[Worker] Auto-analyzing video...`);
-                // Dynamic import to avoid circular dep issues mostly, though here it's fine
+            if (autoAnalysis) {
+                console.log(`[Worker] 🤖 Starting auto-analysis for: ${result.title}`);
                 const { getAIConfig } = await import("@/src/lib/ai-actions");
                 const { analyzeVideo, fetchVideoMetadata, fetchAutoSubtitles } = await import("@/src/lib/analysis-service");
                 
                 const config = await getAIConfig();
                 if (config) {
-                    // We need metadata and subtitles again. 
-                    // Optimization: We could have saved them during download phase if we refactored downloadVideo.
-                    // For now, re-fetch (cached by yt-dlp usually or fast enough).
-                    // Actually, we can just read the subtitles file if it exists? 
-                    // But analyzeVideo expects raw text. 
-                    // Let's use the service helpers.
+                    // Use finalUrl to ensure we get the right video info
+                    const metadata = await fetchVideoMetadata(finalUrl);
+                    const subtitleText = await fetchAutoSubtitles(finalUrl);
                     
-                    const metadata = await fetchVideoMetadata(job.url);
-                    const subtitleText = await fetchAutoSubtitles(job.url); // this might fetch again
-                    
+                    console.log(`[Worker] 🤖 Sending to AI (${config.provider})...`);
                     const analysis = await analyzeVideo(metadata, subtitleText, config);
                     
-                    // Update the video record
-                    // First get the video ID. We just inserted it.
                     const videoRecord = await db.query.videos.findFirst({
-                         where: (videos, { eq }) => eq(videos.youtubeUrl, job.url)
+                         where: (videos, { eq }) => eq(videos.youtubeUrl, finalUrl)
                     });
 
                     if (videoRecord) {
@@ -228,13 +213,17 @@ async function processJob(job: QueueJob) {
                              pacing: analysis.pacing,
                              educationalTags: JSON.stringify(analysis.tags),
                          }).where(eq(videos.id, videoRecord.id));
-                         console.log(`[Worker] Analysis saved for ${videoRecord.title}`);
+                         console.log(`[Worker] ✨ AI Analysis saved for ${videoRecord.title}`);
                     }
                 }
             }
         } catch (err) {
-            console.error(`[Worker] Auto-analysis failed: ${(err as Error).message}`);
+            console.error(`[Worker] ❌ Auto-analysis failed: ${(err as Error).message}`);
         }
+
+        job.status = "done";
+        job.title = result.title || job.title;
+        console.log(`[Worker] Job done: ${job.url} (Resolved: ${finalUrl})`);
 
         // Trigger revalidation
         try { revalidatePath("/admin"); } catch { /* ignore in non-request context */ }
