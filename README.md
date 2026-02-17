@@ -1,8 +1,17 @@
+<div align="center">
+
 # 🛡️ SafeTube Local
 
 **Secure, offline video player for kids — no algorithms, no distractions, no cheating.**
 
-SafeTube is a self-hosted web app that lets parents download YouTube videos and serve them locally to their children in a completely controlled, distraction-free environment with strict, cheat-proof screen time limits.
+[![Platform](https://img.shields.io/badge/Platform-Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Language](https://img.shields.io/badge/Language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Framework](https://img.shields.io/badge/Framework-Next.js-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+
+_SafeTube is a self-hosted web app that lets parents download YouTube videos and serve them locally to their children in a completely controlled, distraction-free environment with strict, cheat-proof screen time limits._
+
+</div>
 
 ---
 
