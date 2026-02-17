@@ -860,7 +860,7 @@ export default function AdminDashboard({
                                                             <div className="w-20 h-14 rounded-lg overflow-hidden bg-black/30 flex-shrink-0 relative">
                                                                 {entry.thumbnailPath ? (
                                                                     <img
-                                                                        src={`/media/${entry.thumbnailPath}`}
+                                                                        src={`/api/media/${entry.thumbnailPath}`}
                                                                         alt={entry.title}
                                                                         className="w-full h-full object-cover"
                                                                     />
