@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AnalysisResult } from "@/src/lib/analysis-service";
+import type { AnalysisResult } from "@/src/types";
 import {
     Shield,
     BookOpen,

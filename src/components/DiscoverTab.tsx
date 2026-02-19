@@ -14,8 +14,8 @@ import {
 import {
     getRecommendations,
     getCachedRecommendations,
-    type Recommendation,
 } from "@/src/lib/recommendation-service";
+import type { Recommendation } from "@/src/types";
 
 interface DiscoverTabProps {
     pin: string;

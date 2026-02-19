@@ -1,46 +1,21 @@
 "use server";
 
-import { db, dbReady } from "@/src/db";
-import { videos, settings } from "@/src/db/schema";
-import { eq } from "drizzle-orm";
+import * as VideosDB from "@/src/lib/db/videos";
+import * as SettingsDB from "@/src/lib/db/settings";
 import { getAIConfig } from "@/src/lib/ai-actions";
 import { createLLMService } from "@/src/lib/llm-service";
-
-// ─── Types ───────────────────────────────────────────────────────────
-
-export interface Recommendation {
-    title: string;
-    searchQuery: string;
-    reason: string;
-    ageRange: string;
-    category: string;
-}
-
-export interface CachedRecommendations {
-    recommendations: Recommendation[];
-    updatedAt: string; // ISO timestamp
-}
+import type { Recommendation, CachedRecommendations } from "@/src/types";
 
 // ─── DB Helpers ──────────────────────────────────────────────────────
 
 const CACHE_KEY = "ai_cached_recommendations";
 
-async function upsertSetting(key: string, value: string) {
-    const [existing] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
-    if (existing) {
-        await db.update(settings).set({ value }).where(eq(settings.key, key));
-    } else {
-        await db.insert(settings).values({ key, value });
-    }
-}
-
 /** Load previously cached recommendations from DB (instant, no AI call) */
 export async function getCachedRecommendations(): Promise<CachedRecommendations | null> {
-    await dbReady;
-    const [row] = await db.select().from(settings).where(eq(settings.key, CACHE_KEY)).limit(1);
-    if (!row?.value) return null;
+    const value = await SettingsDB.getSetting(CACHE_KEY);
+    if (!value) return null;
     try {
-        return JSON.parse(row.value) as CachedRecommendations;
+        return JSON.parse(value) as CachedRecommendations;
     } catch {
         return null;
     }
@@ -70,20 +45,14 @@ export async function getRecommendations(): Promise<{
     recommendations?: Recommendation[];
     error?: string;
 }> {
-    await dbReady;
-    
     const config = await getAIConfig();
     if (!config) {
         return { success: false, error: "AI not configured" };
     }
 
     // Get current library
-    const allVideos = await db.select({
-        title: videos.title,
-        educationalTags: videos.educationalTags,
-        educationalValue: videos.educationalValue,
-    }).from(videos);
-
+    const allVideos = await VideosDB.getAllVideos();
+    
     if (allVideos.length === 0) {
         return { success: false, error: "No videos in library yet. Download some videos first!" };
     }
@@ -134,7 +103,7 @@ export async function getRecommendations(): Promise<{
             recommendations: recs,
             updatedAt: new Date().toISOString(),
         };
-        await upsertSetting(CACHE_KEY, JSON.stringify(cached));
+        await SettingsDB.setSetting(CACHE_KEY, JSON.stringify(cached));
 
         return { success: true, recommendations: recs };
     } catch (err) {

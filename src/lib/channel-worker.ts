@@ -4,23 +4,7 @@ import { videos, settings } from "@/src/db/schema";
 import { revalidatePath } from "next/cache";
 import { fetchVideoMetadata } from "@/src/lib/analysis-service";
 import { eq } from "drizzle-orm";
-
-// ─── Types ───────────────────────────────────────────────────────────
-
-export interface QueueJob {
-    id: string;
-    url: string;
-    title: string;
-    status: "pending" | "downloading" | "done" | "error";
-    error?: string;
-    progress?: number;
-}
-
-export interface QueueState {
-    jobs: QueueJob[];
-    isRunning: boolean;
-    concurrency: number;
-}
+import type { QueueJob, QueueState } from "@/src/types";
 
 // ─── In-Memory Queue (Singleton) ──────────────────────────────────────
 

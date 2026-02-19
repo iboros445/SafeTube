@@ -1,8 +1,11 @@
 "use server";
 
-import { db, dbReady } from "@/src/db";
-import { children, videos, sessions, settings, videoProgress } from "@/src/db/schema";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+
+// Auth
 import {
     createSession,
     endSession,
@@ -10,50 +13,39 @@ import {
     clearSessionCookie,
     clearAdminSession,
 } from "@/src/lib/auth";
-import { downloadVideo, listPlaylistVideos, searchYouTube, type PlaylistEntry, type SearchResult } from "@/src/lib/video-downloader";
+
+// DB Access
+import * as SettingsDB from "@/src/lib/db/settings";
+import * as ChildrenDB from "@/src/lib/db/children";
+import * as VideosDB from "@/src/lib/db/videos";
+
+// Services
+import { downloadVideo, listPlaylistVideos, searchYouTube } from "@/src/lib/video-downloader";
 import { addToQueue } from "@/src/lib/channel-worker";
 import {
     fetchVideoMetadata,
     fetchAutoSubtitles,
     analyzeVideo,
-    type AnalysisResult,
 } from "@/src/lib/analysis-service";
 import { getAIConfig, isAIEnabled } from "@/src/lib/ai-actions";
-import { revalidatePath } from "next/cache";
-import fs from "fs";
-import fsPromises from "fs/promises";
-import path from "path";
+import { deleteMediaFile, saveAvatar, saveSubtitle } from "@/src/services/storage";
 
-// ─── Ensure DB is ready before any action ─────────────────────────
-
-async function ensureDb() {
-    await dbReady;
-}
-
-async function getSettingValue(key: string): Promise<string> {
-    await ensureDb();
-    const [row] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
-    return row?.value ?? "";
-}
+// Types
+import type { PlaylistEntry, SearchResult, AnalysisResult } from "@/src/types";
 
 // ─── Child Session Actions ─────────────────────────────────────────
 
 export async function loginChild(childId: number) {
-    await ensureDb();
-    const [child] = await db
-        .select()
-        .from(children)
-        .where(eq(children.id, childId))
-        .limit(1);
+    const child = await ChildrenDB.getChild(childId);
     if (!child) throw new Error("Child not found");
 
     // Auto-reset if new day
     const today = new Date().toISOString().split("T")[0];
     if (child.lastResetDate !== today) {
-        await db
-            .update(children)
-            .set({ currentUsageSeconds: 0, lastResetDate: today })
-            .where(eq(children.id, child.id));
+        await ChildrenDB.updateChild(child.id, {
+            currentUsageSeconds: 0,
+            lastResetDate: today
+        });
     }
 
     await createSession(childId);
@@ -84,7 +76,7 @@ export async function addChild(
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await db.insert(children).values({
+    const newChildId = await ChildrenDB.createChild({
         name,
         avatarColor,
         avatarType,
@@ -93,16 +85,9 @@ export async function addChild(
         dailyLimitSeconds: dailyLimitMinutes * 60,
     });
 
-    // Get the ID of the newly created child
-    const [newChild] = await db
-        .select({ id: children.id })
-        .from(children)
-        .orderBy(desc(children.id))
-        .limit(1);
-
     revalidatePath("/admin");
     revalidatePath("/");
-    return { success: true, childId: newChild?.id };
+    return { success: true, childId: newChildId };
 }
 
 export async function updateChild(
@@ -121,7 +106,7 @@ export async function updateChild(
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: any = {};
     if (data.name) updateData.name = data.name;
     if (data.avatarColor) updateData.avatarColor = data.avatarColor;
     if (data.avatarType) updateData.avatarType = data.avatarType;
@@ -131,10 +116,7 @@ export async function updateChild(
     if (data.dailyLimitMinutes !== undefined)
         updateData.dailyLimitSeconds = data.dailyLimitMinutes * 60;
 
-    await db
-        .update(children)
-        .set(updateData)
-        .where(eq(children.id, childId));
+    await ChildrenDB.updateChild(childId, updateData);
 
     revalidatePath("/admin");
     revalidatePath("/");
@@ -145,7 +127,7 @@ export async function deleteChild(pin: string, childId: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await db.delete(children).where(eq(children.id, childId));
+    await ChildrenDB.deleteChild(childId);
     revalidatePath("/admin");
     return { success: true };
 }
@@ -154,10 +136,7 @@ export async function resetChildTime(pin: string, childId: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await db
-        .update(children)
-        .set({ currentUsageSeconds: 0 })
-        .where(eq(children.id, childId));
+    await ChildrenDB.updateChild(childId, { currentUsageSeconds: 0 });
 
     revalidatePath("/admin");
     return { success: true };
@@ -167,7 +146,8 @@ export async function endChildSession(pin: string, childId: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await endSession(childId);
+    await ChildrenDB.endSessionForChild(childId);
+    await endSession(childId); // Also clear server-side session cookies if applicable
     revalidatePath("/admin");
     return { success: true };
 }
@@ -176,14 +156,10 @@ export async function punishChild(pin: string, childId: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    const [child] = await db.select().from(children).where(eq(children.id, childId)).limit(1);
+    const child = await ChildrenDB.getChild(childId);
     if (!child) return { success: false, error: "Child not found" };
 
-    await db.update(children)
-        .set({ currentUsageSeconds: child.dailyLimitSeconds })
-        .where(eq(children.id, childId));
-
-    // Force end session too so they get kicked out immediately
+    await ChildrenDB.updateChild(childId, { currentUsageSeconds: child.dailyLimitSeconds });
     await endSession(childId);
 
     console.log(`[Punish] Child ${childId} punished. Usage set to ${child.dailyLimitSeconds}, session ended.`);
@@ -195,9 +171,7 @@ export async function punishChild(pin: string, childId: number) {
 
 
 export async function getAdminTheme() {
-    // We don't have a getSetting helper helper here so we query directly
-    const result = await db.select().from(settings).where(eq(settings.key, "admin_theme")).limit(1);
-    return result[0]?.value || "dark";
+    return (await SettingsDB.getSetting("admin_theme")) || "dark";
 }
 
 export async function adminEndCurrentSession() {
@@ -212,7 +186,7 @@ export async function downloadVideoAction(pin: string, url: string) {
 
     // Check if AI auto-analysis is enabled
     const aiEnabled = await isAIEnabled();
-    const autoAnalysis = await getSettingValue("ai_auto_analysis");
+    const autoAnalysis = (await SettingsDB.getSetting("ai_auto_analysis")) || "";
 
     if (aiEnabled && autoAnalysis === "true") {
         // AI Analysis Flow: fetch metadata + subtitles, analyze, return for review
@@ -238,9 +212,7 @@ export async function downloadVideoAction(pin: string, url: string) {
         }
     }
 
-    // Standard download flow (no AI) — delegate to queue worker so
-    // the server action returns immediately and doesn't block other actions
-    // (e.g. deleteVideo) due to Next.js per-client action serialization.
+    // Standard download flow (no AI)
     addToQueue([{ url, title: url }]);
     return { success: true, queued: true };
 }
@@ -260,7 +232,7 @@ export async function approveAndDownload(
         return { success: false, error: result.error };
     }
 
-    await db.insert(videos).values({
+    await VideosDB.createVideo({
         title: result.title!,
         youtubeUrl: url,
         localPath: result.filename!,
@@ -310,11 +282,7 @@ export async function deleteVideo(pin: string, videoId: number) {
     if (!valid) return { success: false, error: "Invalid PIN" };
 
     console.log(`[Delete] PIN valid, fetching video from DB...`);
-    const [video] = await db
-        .select()
-        .from(videos)
-        .where(eq(videos.id, videoId))
-        .limit(1);
+    const video = await VideosDB.getVideo(videoId);
     
     if (!video) {
         console.log(`[Delete] Video not found in DB`);
@@ -323,21 +291,12 @@ export async function deleteVideo(pin: string, videoId: number) {
     console.log(`[Delete] Video found: ${video.title} (${video.localPath})`);
 
     // Delete files from disk async
-    const mediaDir = path.join(process.cwd(), "media");
-    const videoPath = path.join(mediaDir, video.localPath);
-    const thumbPath = video.thumbnailPath
-        ? path.join(mediaDir, video.thumbnailPath)
-        : null;
-    const subtitlePath = video.subtitlePath
-        ? path.join(mediaDir, video.subtitlePath)
-        : null;
-
     console.log(`[Delete] Starting file deletion...`);
     try {
         const tasks = [];
-        if (fs.existsSync(videoPath)) tasks.push(fsPromises.unlink(videoPath));
-        if (thumbPath && fs.existsSync(thumbPath)) tasks.push(fsPromises.unlink(thumbPath));
-        if (subtitlePath && fs.existsSync(subtitlePath)) tasks.push(fsPromises.unlink(subtitlePath));
+        if (video.localPath) tasks.push(deleteMediaFile(video.localPath));
+        if (video.thumbnailPath) tasks.push(deleteMediaFile(video.thumbnailPath));
+        if (video.subtitlePath) tasks.push(deleteMediaFile(video.subtitlePath));
         
         await Promise.allSettled(tasks);
         console.log(`[Delete] Files deleted (or attemped)`);
@@ -346,7 +305,9 @@ export async function deleteVideo(pin: string, videoId: number) {
     }
 
     console.log(`[Delete] Deleting from DB...`);
-    await db.delete(videos).where(eq(videos.id, videoId));
+    await VideosDB.deleteVideo(videoId);
+    // Also delete progress
+    await VideosDB.deleteVideoProgress(videoId);
     console.log(`[Delete] DB deleted. Revalidating paths...`);
     
     revalidatePath("/admin");
@@ -373,15 +334,13 @@ export async function bulkDeleteVideos(pin: string, videoIds: number[]) {
 
 // ─── Settings ──────────────────────────────────────────────────────
 
+// ─── Settings ──────────────────────────────────────────────────────
+
 export async function updatePin(currentPin: string, newPin: string) {
     const valid = await validateAdminPin(currentPin);
     if (!valid) return { success: false, error: "Invalid current PIN" };
 
-    await db
-        .update(settings)
-        .set({ value: newPin })
-        .where(eq(settings.key, "admin_pin"));
-
+    await SettingsDB.setSetting("admin_pin", newPin);
     return { success: true };
 }
 
@@ -389,10 +348,7 @@ export async function updateRetention(pin: string, days: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await db
-        .update(settings)
-        .set({ value: String(days) })
-        .where(eq(settings.key, "retention_days"));
+    await SettingsDB.setSetting("retention_days", String(days));
 
     revalidatePath("/admin");
     return { success: true };
@@ -405,7 +361,6 @@ export async function updateSetting(pin: string, key: string, value: string) {
     // Side effect: Write cookies to file if key is youtube_cookies
     if (key === "youtube_cookies") {
         const cookiePath = path.join(process.cwd(), "cookies.txt");
-        // If value is empty, maybe delete the file?
         if (!value.trim()) {
             if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
         } else {
@@ -413,27 +368,7 @@ export async function updateSetting(pin: string, key: string, value: string) {
         }
     }
 
-    if (key === "youtube_cookies") {
-        const cookiePath = path.join(process.cwd(), "cookies.txt");
-        if (!value.trim()) {
-            if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
-        } else {
-            fs.writeFileSync(cookiePath, value);
-        }
-    }
-
-    // Upsert: try update first, insert if no rows affected
-    const existing = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, key))
-        .limit(1);
-
-    if (existing.length > 0) {
-        await db.update(settings).set({ value }).where(eq(settings.key, key));
-    } else {
-        await db.insert(settings).values({ key, value });
-    }
+    await SettingsDB.setSetting(key, value);
 
     revalidatePath("/admin");
     return { success: true };
@@ -446,64 +381,17 @@ export async function saveVideoProgress(
     videoId: number,
     progressSeconds: number
 ) {
-    // Upsert: check if row exists
-    const [existing] = await db
-        .select()
-        .from(videoProgress)
-        .where(
-            and(
-                eq(videoProgress.childId, childId),
-                eq(videoProgress.videoId, videoId)
-            )
-        )
-        .limit(1);
-
-    if (existing) {
-        await db
-            .update(videoProgress)
-            .set({ progressSeconds, updatedAt: new Date() })
-            .where(eq(videoProgress.id, existing.id));
-    } else {
-        await db.insert(videoProgress).values({
-            childId,
-            videoId,
-            progressSeconds,
-            updatedAt: new Date(),
-        });
-    }
+    await VideosDB.saveVideoProgress(childId, videoId, progressSeconds);
 }
 
 export async function getVideoProgressMap(childId: number) {
-    const rows = await db
-        .select()
-        .from(videoProgress)
-        .where(eq(videoProgress.childId, childId));
-    const map: Record<number, number> = {};
-    for (const row of rows) {
-        map[row.videoId] = row.progressSeconds;
-    }
-    return map;
+    return VideosDB.getVideoProgressMap(childId);
 }
 
 // ─── Child Watch History (Admin) ────────────────────────────────────
 
 export async function getChildWatchHistory(childId: number) {
-    const rows = await db
-        .select({
-            progressId: videoProgress.id,
-            videoId: videoProgress.videoId,
-            progressSeconds: videoProgress.progressSeconds,
-            updatedAt: videoProgress.updatedAt,
-            title: videos.title,
-            thumbnailPath: videos.thumbnailPath,
-            durationSeconds: videos.durationSeconds,
-        })
-        .from(videoProgress)
-        .innerJoin(videos, eq(videoProgress.videoId, videos.id))
-        .where(eq(videoProgress.childId, childId))
-        .orderBy(desc(videoProgress.updatedAt));
-
-    return rows;
+    return VideosDB.getChildWatchHistory(childId);
 }
 
 export async function updateVideoProgressAdmin(
@@ -515,7 +403,7 @@ export async function updateVideoProgressAdmin(
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    await saveVideoProgress(childId, videoId, Math.max(0, Math.round(newProgressSeconds)));
+    await VideosDB.saveVideoProgress(childId, videoId, Math.max(0, Math.round(newProgressSeconds)));
     revalidatePath("/admin");
     return { success: true };
 }
@@ -533,55 +421,36 @@ export async function uploadAvatarPhoto(
     const file = formData.get("photo") as File;
     if (!file) return { success: false, error: "No file uploaded" };
 
-    const avatarsDir = path.join(process.cwd(), "media", "avatars");
-    if (!fs.existsSync(avatarsDir)) {
-        fs.mkdirSync(avatarsDir, { recursive: true });
-    }
+    const filename = await saveAvatar(childId, file);
 
-    const ext = file.name.split(".").pop() || "jpg";
-    const filename = `avatar_${childId}_${Date.now()}.${ext}`;
-    const filePath = path.join(avatarsDir, filename);
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, buffer);
-
-    await db
-        .update(children)
-        .set({
-            avatarType: "photo",
-            avatarPhoto: `avatars/${filename}`,
-        })
-        .where(eq(children.id, childId));
+    await ChildrenDB.updateChild(childId, {
+        avatarType: "photo",
+        avatarPhoto: filename,
+    });
 
     revalidatePath("/admin");
     revalidatePath("/");
-    return { success: true, filename: `avatars/${filename}` };
+    return { success: true, filename };
 }
 
 // ─── Data Fetchers ─────────────────────────────────────────────────
 
 export async function getChildren() {
-    return db.select().from(children);
+    return ChildrenDB.getAllChildren();
 }
 
 export async function getVideos() {
-    return db.select().from(videos);
+    return VideosDB.getAllVideos();
 }
 
 export async function getSettings() {
-    const rows = await db.select().from(settings);
-    const map: Record<string, string> = {};
-    for (const row of rows) {
-        map[row.key] = row.value;
-    }
-    return map;
+    const map = await SettingsDB.getSettingsMap();
+    // Convert Map to Record
+    return Object.fromEntries(map);
 }
 
 export async function getChildSessions(childId: number) {
-    return db
-        .select()
-        .from(sessions)
-        .where(and(eq(sessions.childId, childId), eq(sessions.active, true)));
+    return ChildrenDB.getChildSessions(childId);
 }
 
 // ─── Subtitle Upload ────────────────────────────────────────────────
@@ -593,53 +462,14 @@ export async function uploadSubtitle(pin: string, videoId: number, formData: For
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file uploaded" };
 
-    const ext = path.extname(file.name).toLowerCase();
-    if (ext !== ".srt" && ext !== ".vtt") {
-        return { success: false, error: "Invalid file type. Only .srt or .vtt allowed." };
-    }
-
-    const subtitlesDir = path.join(process.cwd(), "media", "subtitles");
-    if (!fs.existsSync(subtitlesDir)) {
-        fs.mkdirSync(subtitlesDir, { recursive: true });
-    }
-
-    const timestamp = Date.now();
-    const basename = `sub_${videoId}_${timestamp}`;
-    const originalFilename = `${basename}${ext}`;
-    const originalPath = path.join(subtitlesDir, originalFilename);
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(originalPath, buffer);
-
-    let finalFilename = originalFilename;
-
-    // Convert SRT to VTT if needed
-    if (ext === ".srt") {
-        const vttFilename = `${basename}.vtt`;
-        const vttPath = path.join(subtitlesDir, vttFilename);
-
-        try {
-            const { spawn } = await import("child_process");
-            await new Promise<void>((resolve, reject) => {
-                const ffmpeg = spawn("ffmpeg", ["-i", originalPath, vttPath]);
-                ffmpeg.on("close", (code) => {
-                    if (code === 0) resolve();
-                    else reject(new Error(`FFmpeg exited with code ${code}`));
-                });
-                ffmpeg.on("error", (err) => reject(err));
-            });
-            finalFilename = vttFilename;
-        } catch (error) {
-            console.error("Subtitle conversion error:", error);
-            return { success: false, error: "Failed to convert SRT to VTT" };
-        }
+    const { filename, error } = await saveSubtitle(videoId, file);
+    
+    if (error || !filename) {
+        return { success: false, error: error || "Failed to save subtitle" };
     }
 
     // Update DB
-    await db
-        .update(videos)
-        .set({ subtitlePath: `subtitles/${finalFilename}` })
-        .where(eq(videos.id, videoId));
+    await VideosDB.updateVideo(videoId, { subtitlePath: filename });
 
     revalidatePath("/admin");
     revalidatePath("/child");

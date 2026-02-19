@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { QueueJob } from "@/src/lib/channel-worker";
+import type { QueueJob, PlaylistEntry } from "@/src/types";
 import {
     X,
     Loader2,
@@ -15,12 +15,7 @@ import {
     Trash2,
 } from "lucide-react";
 
-interface PlaylistEntry {
-    url: string;
-    title: string;
-    duration?: number;
-    selected?: boolean;
-}
+// interface PlaylistEntry removed, imported from types
 
 interface DownloadManagerProps {
     pin: string;

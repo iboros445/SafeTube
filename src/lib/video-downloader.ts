@@ -1,6 +1,13 @@
 import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import type {
+    DownloadResult,
+    DownloadProgress,
+    UrlType,
+    PlaylistEntry,
+    SearchResult
+} from "@/src/types";
 
 const MEDIA_DIR = path.join(process.cwd(), "media");
 
@@ -9,37 +16,13 @@ if (!fs.existsSync(MEDIA_DIR)) {
     fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }
 
-export interface DownloadResult {
-    success: boolean;
-    title?: string;
-    resolvedUrl?: string;
-    filename?: string;
-    thumbnailFilename?: string;
-    duration?: number;
-    error?: string;
-}
-
-export interface DownloadProgress {
-    status: "downloading" | "processing" | "complete" | "error";
-    percent?: number;
-    message?: string;
-}
-
 // ─── URL Type Detection ──────────────────────────────────────────────
-
-export type UrlType = "video" | "playlist" | "channel" | "unknown";
 
 export function detectUrlType(url: string): UrlType {
     if (/[?&]list=/.test(url)) return "playlist";
     if (/(\/channel\/|\/c\/|\/user\/|\/@)/.test(url)) return "channel";
     if (/(youtu\.be\/|[?&]v=|\/watch\?)/.test(url)) return "video";
     return "unknown";
-}
-
-export interface PlaylistEntry {
-    url: string;
-    title: string;
-    duration?: number;
 }
 
 export async function listPlaylistVideos(
@@ -107,14 +90,6 @@ export async function listPlaylistVideos(
 }
 
 // ─── YouTube Search ──────────────────────────────────────────────────
-
-export interface SearchResult {
-    url: string;
-    title: string;
-    duration?: number;
-    channel?: string;
-    thumbnail?: string;
-}
 
 export async function searchYouTube(
     query: string,

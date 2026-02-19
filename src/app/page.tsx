@@ -3,7 +3,7 @@ import { getChildren, getAdminTheme } from "@/src/lib/actions";
 import { redirect } from "next/navigation";
 import HomeClient from "@/src/components/HomeClient";
 
-export default async function HomePage() {
+export default async function Page() {
     // If there's an active session, redirect to child view
     const sessionData = await getActiveSession();
     if (sessionData) {

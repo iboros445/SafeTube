@@ -5,11 +5,10 @@ import {
     getAISettings,
     updateAISettings,
     testAIConnection,
-    type AISettings as AISettingsType,
-    getOllamaModels,
     getAvailableModels,
 } from "@/src/lib/ai-actions";
-import { DEFAULT_MODELS, RECOMMENDED_MODELS, type AIProvider } from "@/src/lib/llm-service";
+import { DEFAULT_MODELS, RECOMMENDED_MODELS } from "@/src/lib/llm-service";
+import type { AISettings as AISettingsType, AIProvider } from "@/src/types";
 import {
     Brain,
     Key,

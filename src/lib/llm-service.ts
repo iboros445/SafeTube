@@ -2,6 +2,12 @@ import crypto from "crypto";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import type {
+    LLMResponse,
+    LLMService,
+    AIProvider,
+    AIConfig
+} from "@/src/types";
 
 // ─── AES-256-GCM Encryption for API Keys ────────────────────────────
 // Uses a machine-derived key from hostname + __dirname for deterministic
@@ -36,27 +42,6 @@ export function decryptApiKey(ciphertext: string): string {
     let decrypted = decipher.update(encrypted, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
-}
-
-// ─── LLM Service Interface ──────────────────────────────────────────
-
-export interface LLMResponse {
-    content: string;
-    usage?: { promptTokens: number; completionTokens: number };
-}
-
-export interface LLMService {
-    chat(systemPrompt: string, userMessage: string): Promise<LLMResponse>;
-    test(): Promise<{ success: boolean; error?: string }>;
-}
-
-export type AIProvider = "openai" | "gemini" | "anthropic" | "ollama";
-
-export interface AIConfig {
-    provider: AIProvider;
-    apiKey: string;
-    model?: string;
-    ollamaUrl?: string;
 }
 
 // ─── Provider Implementations ────────────────────────────────────────

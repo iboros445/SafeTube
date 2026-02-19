@@ -9,10 +9,9 @@ import {
     decryptApiKey,
     createLLMService,
     DEFAULT_MODELS,
-    type AIProvider,
-    type AIConfig,
     RECOMMENDED_MODELS,
 } from "@/src/lib/llm-service";
+import type { AIProvider, AIConfig, AISettings } from "@/src/types";
 
 export async function getOllamaModels(url: string): Promise<string[]> {
     try {
@@ -108,16 +107,6 @@ async function getSettingValue(key: string): Promise<string> {
 }
 
 // ─── Public API ─────────────────────────────────────────────────────
-
-export interface AISettings {
-    provider: AIProvider | "";
-    apiKey: string;        // Will be masked for client: "sk-****" 
-    apiKeySet: boolean;    // Whether a key is actually stored
-    autoAnalysis: boolean;
-    recommendations: boolean;
-    ollamaUrl: string;
-    model: string;
-}
 
 export async function getAISettings(): Promise<AISettings> {
     await ensureDb();

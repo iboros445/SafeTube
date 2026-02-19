@@ -1,7 +1,8 @@
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
-import { createLLMService, type AIConfig } from "@/src/lib/llm-service";
+import { createLLMService } from "@/src/lib/llm-service";
+import type { VideoMetadata, AnalysisResult, AIConfig } from "@/src/types";
 
 const MEDIA_DIR = path.join(process.cwd(), "media");
 const TEMP_DIR = path.join(process.cwd(), "data", "temp");
@@ -9,24 +10,6 @@ const TEMP_DIR = path.join(process.cwd(), "data", "temp");
 // Ensure temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
-}
-
-// ─── Types ───────────────────────────────────────────────────────────
-
-export interface VideoMetadata {
-    title: string;
-    channel?: string;
-    duration?: number;
-    description?: string;
-    url: string;
-}
-
-export interface AnalysisResult {
-    safetyScore: number;           // 1-10
-    educationalValue: string;       // e.g. "High - Teaches Physics"
-    pacing: string;                 // e.g. "Slow/Calm"
-    tags: string[];                 // e.g. ["science", "physics", "education"]
-    summary: string;                // Brief AI-generated summary
 }
 
 // ─── Fetch Video Metadata (no download) ──────────────────────────────
