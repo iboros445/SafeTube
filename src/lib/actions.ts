@@ -127,8 +127,15 @@ export async function deleteChild(pin: string, childId: number) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
+    // Delete avatar photo file if one exists
+    const child = await ChildrenDB.getChild(childId);
+    if (child?.avatarPhoto) {
+        await deleteMediaFile(child.avatarPhoto);
+    }
+
     await ChildrenDB.deleteChild(childId);
     revalidatePath("/admin");
+    revalidatePath("/");
     return { success: true };
 }
 
