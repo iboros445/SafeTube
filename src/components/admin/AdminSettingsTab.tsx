@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { toast } from "sonner";
 import {
     Palette,
@@ -51,6 +51,7 @@ export default function AdminSettingsTab({
     // Cookie Config State
     const [showCookieModal, setShowCookieModal] = useState(false);
     const [cookieSaved, setCookieSaved] = useState(false);
+    const cookieTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     // PIN State
     const [newPin, setNewPin] = useState("");
@@ -227,7 +228,7 @@ export default function AdminSettingsTab({
                                     className={`w-full ${inputCls} p-3 text-xs font-mono h-48 focus:outline-none rounded-xl resize-none`}
                                     placeholder="# Netscape HTTP Cookie File..."
                                     defaultValue={settings.youtube_cookies || ""}
-                                    id="cookie-textarea"
+                                    ref={cookieTextareaRef}
                                 />
                             </div>
                         </div>
@@ -245,7 +246,7 @@ export default function AdminSettingsTab({
                                     : "bg-safetube-accent text-white hover:bg-safetube-accent/90"
                                     }`}
                                 onClick={async () => {
-                                    const textarea = document.getElementById("cookie-textarea") as HTMLTextAreaElement;
+                                    const textarea = cookieTextareaRef.current;
                                     if (textarea) {
                                         setActionLoading("cookies");
                                         await updateSetting(pin, "youtube_cookies", textarea.value);

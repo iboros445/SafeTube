@@ -3,11 +3,23 @@ import AdminDashboard from "@/src/components/AdminDashboard";
 import { getAdminSession } from "@/src/lib/auth";
 
 export default async function AdminPage() {
-    const [childrenList, videoList, settingsMap, isAdmin] = await Promise.all([
+    const isAdmin = await getAdminSession();
+
+    if (!isAdmin) {
+        return (
+            <AdminDashboard
+                profiles={[]}
+                videos={[]}
+                settings={{}}
+                initialIsAdmin={false}
+            />
+        );
+    }
+
+    const [childrenList, videoList, settingsMap] = await Promise.all([
         getChildren(),
         getVideos(),
         getSettings(),
-        getAdminSession(),
     ]);
 
     return (
@@ -15,7 +27,7 @@ export default async function AdminPage() {
             profiles={childrenList}
             videos={videoList}
             settings={settingsMap}
-            initialIsAdmin={isAdmin}
+            initialIsAdmin={true}
         />
     );
 }

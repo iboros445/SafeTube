@@ -32,6 +32,11 @@ import {
     uploadSubtitle,
 } from "@/src/lib/actions";
 
+function safeParseTags(json: string | null): string[] {
+    if (!json) return [];
+    try { return JSON.parse(json); } catch { return []; }
+}
+
 interface AdminVideosTabProps {
     videos: Video[];
     pin: string;
@@ -593,7 +598,7 @@ export default function AdminVideosTab({
                                     <div className="md:col-span-2">
                                         <span className={`block text-xs font-medium ${textMuted} mb-1 uppercase tracking-wider`}>Tags</span>
                                         <div className="flex flex-wrap gap-2">
-                                            {JSON.parse(video.educationalTags).map((tag: string, i: number) => (
+                                            {safeParseTags(video.educationalTags).map((tag: string, i: number) => (
                                                 <span key={i} className={`px-2 py-0.5 rounded-full text-xs ${isLight ? "bg-slate-200 text-slate-700" : "bg-slate-700 text-slate-300"}`}>
                                                     {tag}
                                                 </span>

@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "./schema";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 
 const DB_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "safetube.db");
@@ -68,7 +69,8 @@ async function initDb() {
       child_id INTEGER NOT NULL REFERENCES children(id) ON DELETE CASCADE,
       video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
       progress_seconds INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      UNIQUE(child_id, video_id)
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -76,7 +78,6 @@ async function initDb() {
       value TEXT NOT NULL
     );
 
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pin', '1234');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('retention_days', '7');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_provider', '');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_api_key', '');
@@ -85,6 +86,22 @@ async function initDb() {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_ollama_url', 'http://localhost:11434');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_model', '');
   `);
+
+  // Generate a random admin PIN on first boot if one doesn't exist yet
+  const pinRow = await client.execute("SELECT value FROM settings WHERE key = 'admin_pin'");
+  if (pinRow.rows.length === 0) {
+    const randomPin = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.scryptSync(randomPin, salt, 64).toString("hex");
+    await client.execute({
+      sql: "INSERT INTO settings (key, value) VALUES ('admin_pin', ?)",
+      args: [`${salt}:${hash}`],
+    });
+    console.log(`\n╔══════════════════════════════════════════════════╗`);
+    console.log(`║  SafeTube — First-run admin PIN: ${randomPin}          ║`);
+    console.log(`║  Change this PIN in the admin settings page.     ║`);
+    console.log(`╚══════════════════════════════════════════════════╝\n`);
+  }
 
   // Migrate existing databases: add new columns if missing (safe to fail)
   const migrations = [
@@ -103,6 +120,11 @@ async function initDb() {
   for (const sql of migrations) {
     try { await client.execute(sql); } catch { /* column already exists */ }
   }
+
+  // Ensure unique constraint on video_progress (for existing DBs)
+  try {
+    await client.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_video_progress_child_video ON video_progress(child_id, video_id)");
+  } catch { /* index already exists or table doesn't support it */ }
 }
 
 // Singleton promise: created once, awaited by all consumers to ensure DB is ready.

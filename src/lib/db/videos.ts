@@ -51,25 +51,17 @@ export async function deleteVideoProgress(videoId: number): Promise<void> {
 export async function saveVideoProgress(childId: number, videoId: number, progressSeconds: number): Promise<void> {
     await dbReady;
     const now = new Date();
-    
-    // Upsert progress
-    const [existing] = await db.select()
-        .from(videoProgress)
-        .where(and(eq(videoProgress.childId, childId), eq(videoProgress.videoId, videoId)))
-        .limit(1);
 
-    if (existing) {
-        await db.update(videoProgress)
-            .set({ progressSeconds, updatedAt: now })
-            .where(eq(videoProgress.id, existing.id));
-    } else {
-        await db.insert(videoProgress).values({
-            childId,
-            videoId,
-            progressSeconds,
-            updatedAt: now,
-        });
-    }
+    // Atomic upsert using the UNIQUE(child_id, video_id) constraint
+    await db.insert(videoProgress).values({
+        childId,
+        videoId,
+        progressSeconds,
+        updatedAt: now,
+    }).onConflictDoUpdate({
+        target: [videoProgress.childId, videoProgress.videoId],
+        set: { progressSeconds, updatedAt: now },
+    });
 }
 
 export async function getVideoProgressMap(childId: number): Promise<Record<number, number>> {

@@ -7,6 +7,8 @@ import { validateAdminPin } from "@/src/lib/auth";
 import {
     encryptApiKey,
     decryptApiKey,
+} from "@/src/lib/encryption";
+import {
     createLLMService,
     DEFAULT_MODELS,
     RECOMMENDED_MODELS,
@@ -103,7 +105,9 @@ export async function getAvailableModels(provider: AIProvider, apiKey: string, o
         }
 
         if (provider === "gemini") {
-             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${keyToUse}`);
+             const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+                 headers: { 'x-goog-api-key': keyToUse },
+             });
              if (!res.ok) {
                  return RECOMMENDED_MODELS.gemini;
              }

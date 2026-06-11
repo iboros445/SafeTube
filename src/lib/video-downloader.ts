@@ -16,11 +16,34 @@ if (!fs.existsSync(MEDIA_DIR)) {
     fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }
 
+// ─── URL Validation ──────────────────────────────────────────────────
+
+/**
+ * Only allow URLs from known YouTube domains to prevent arbitrary
+ * command execution or SSRF via yt-dlp.
+ */
+function validateYouTubeUrl(url: string): boolean {
+    try {
+        const parsed = new URL(url);
+        const validHosts = ["youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"];
+        return validHosts.includes(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Sanitize search queries to only allow safe characters.
+ */
+function sanitizeSearchQuery(query: string): string {
+    return query.replace(/[^a-zA-Z0-9\s\-_.',!?]/g, "").trim();
+}
+
 // ─── URL Type Detection ──────────────────────────────────────────────
 
 export function detectUrlType(url: string): UrlType {
     if (/[?&]list=/.test(url)) return "playlist";
-    if (/(\/channel\/|\/c\/|\/user\/|\/@)/.test(url)) return "channel";
+    if (/(\/(channel|c|user)\/|\/@)/.test(url)) return "channel";
     if (/(youtu\.be\/|[?&]v=|\/watch\?)/.test(url)) return "video";
     return "unknown";
 }
@@ -30,6 +53,11 @@ export async function listPlaylistVideos(
     limit?: number
 ): Promise<PlaylistEntry[]> {
     return new Promise((resolve) => {
+        if (!validateYouTubeUrl(url)) {
+            resolve([]);
+            return;
+        }
+
         const args = [
             "--flat-playlist",
             "--dump-json",
@@ -96,8 +124,14 @@ export async function searchYouTube(
     count: number = 5
 ): Promise<SearchResult[]> {
     return new Promise((resolve) => {
+        const sanitized = sanitizeSearchQuery(query);
+        if (!sanitized) {
+            resolve([]);
+            return;
+        }
+
         const args = [
-            `ytsearch${count}:${query}`,
+            `ytsearch${count}:${sanitized}`,
             "--flat-playlist",
             "--dump-json",
             "--no-download",
@@ -172,6 +206,14 @@ export async function downloadVideo(
     }
 
     return new Promise((resolve) => {
+        if (!validateYouTubeUrl(url)) {
+            resolve({
+                success: false,
+                error: "Invalid URL: only YouTube URLs are allowed.",
+            });
+            return;
+        }
+
         // First, get video info
         const infoArgs = [
             "--dump-json",

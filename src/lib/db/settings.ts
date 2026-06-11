@@ -16,12 +16,10 @@ export async function getSettingsMap(): Promise<Map<string, string>> {
 
 export async function setSetting(key: string, value: string): Promise<void> {
     await dbReady;
-    const [existing] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
-    if (existing) {
-        await db.update(settings).set({ value }).where(eq(settings.key, key));
-    } else {
-        await db.insert(settings).values({ key, value });
-    }
+    await db.insert(settings).values({ key, value }).onConflictDoUpdate({
+        target: settings.key,
+        set: { value },
+    });
 }
 
 export async function deleteSetting(key: string): Promise<void> {

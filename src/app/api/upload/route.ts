@@ -30,6 +30,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid file type. Only MP4, MKV, WEBM allowed." }, { status: 400 });
         }
 
+        // File size validation — reject files larger than 2GB
+        const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+        if (file.size > MAX_FILE_SIZE) {
+            return NextResponse.json({ error: "File too large. Maximum size is 2 GB." }, { status: 413 });
+        }
+
         const buffer = Buffer.from(await file.arrayBuffer());
         const timestamp = Date.now();
         const safeTitle = (title || file.name)

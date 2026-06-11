@@ -3,6 +3,7 @@ import { sessions, children } from "@/src/db/schema";
 import { eq, and } from "drizzle-orm";
 import { cookies } from "next/headers";
 import crypto from "crypto";
+import * as SettingsDB from "@/src/lib/db/settings";
 
 const SESSION_COOKIE = "safetube_session";
 const ADMIN_SESSION_COOKIE = "safetube_admin_session";
@@ -33,7 +34,7 @@ export async function createSession(childId: number): Promise<string> {
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE, id, {
         httpOnly: true,
-        secure: false, // local-only, no HTTPS needed
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         path: "/",
         maxAge: SESSION_DURATION_MS / 1000,
@@ -43,18 +44,18 @@ export async function createSession(childId: number): Promise<string> {
 }
 
 export async function createAdminSession() {
+    await dbReady;
     const id = crypto.randomUUID();
+    const expiresAt = Date.now() + ADMIN_SESSION_DURATION_MS;
     const cookieStore = await cookies();
 
-    // We store the admin session in a cookie. For a local app, we don't necessarily 
-    // need a DB table for admin sessions if we use a signed cookie or just a simple ID 
-    // that we check. Since we already have a settings table, we could store a token there,
-    // but for simplicity and responsiveness, a secure cookie is often enough for a local parent dashboard.
-    // However, to be extra safe and follow the same pattern, we'll just use a cookie with a random ID.
+    // Store session ID and expiration in the settings DB for server-side validation
+    await SettingsDB.setSetting("admin_session_id", id);
+    await SettingsDB.setSetting("admin_session_expires", String(expiresAt));
 
     cookieStore.set(ADMIN_SESSION_COOKIE, id, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         path: "/",
         maxAge: ADMIN_SESSION_DURATION_MS / 1000,
@@ -62,13 +63,33 @@ export async function createAdminSession() {
 }
 
 export async function getAdminSession(): Promise<boolean> {
+    await dbReady;
     const cookieStore = await cookies();
-    return cookieStore.has(ADMIN_SESSION_COOKIE);
+    const cookieValue = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+    if (!cookieValue) return false;
+
+    // Validate cookie value against stored session ID
+    const storedId = await SettingsDB.getSetting("admin_session_id");
+    if (!storedId || storedId !== cookieValue) return false;
+
+    // Check expiration
+    const expiresStr = await SettingsDB.getSetting("admin_session_expires");
+    if (!expiresStr || Date.now() > Number(expiresStr)) {
+        // Session expired — clean up
+        await clearAdminSession();
+        return false;
+    }
+
+    return true;
 }
 
 export async function clearAdminSession() {
+    await dbReady;
     const cookieStore = await cookies();
     cookieStore.delete(ADMIN_SESSION_COOKIE);
+    // Clear from settings DB
+    await SettingsDB.deleteSetting("admin_session_id");
+    await SettingsDB.deleteSetting("admin_session_expires");
 }
 
 export async function getActiveSession() {
@@ -119,6 +140,9 @@ export async function clearSessionCookie() {
     cookieStore.delete(SESSION_COOKIE);
 }
 
+// NOTE: This in-memory rate limiter resets on server restart and is not shared
+// across multiple server instances. This is acceptable for a single-instance
+// local app, but would need a persistent store (e.g. Redis) for production.
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const MAX_ATTEMPTS = 5;
 const ATTEMPTS_MAP = new Map<string, { count: number; firstAttempt: number }>();

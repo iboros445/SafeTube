@@ -4,12 +4,16 @@ import {
     addToQueue,
     clearCompletedJobs,
 } from "@/src/lib/channel-worker";
-import { validateAdminPin } from "@/src/lib/auth";
+import { validateAdminPin, getAdminSession } from "@/src/lib/auth";
 
 export async function GET() {
-    // console.log("[API/Queue] GET request received");
+    // Auth check — only admins should see queue state
+    const isAdmin = await getAdminSession();
+    if (!isAdmin) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const state = getQueueState();
-    // console.log("[API/Queue] Returning state:", state);
     return NextResponse.json(state);
 }
 
@@ -34,9 +38,9 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-    } catch (err) {
+    } catch {
         return NextResponse.json(
-            { error: (err as Error).message },
+            { error: "Internal server error" },
             { status: 500 }
         );
     }

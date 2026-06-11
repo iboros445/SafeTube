@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 
 // Auth
 import {
@@ -328,7 +329,9 @@ export async function updatePin(currentPin: string, newPin: string) {
     const valid = await validateAdminPin(currentPin);
     if (!valid) return { success: false, error: "Invalid current PIN" };
 
-    await SettingsDB.setSetting("admin_pin", newPin);
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.scryptSync(newPin, salt, 64).toString("hex");
+    await SettingsDB.setSetting("admin_pin", `${salt}:${hash}`);
     return { success: true };
 }
 
@@ -345,6 +348,15 @@ export async function updateRetention(pin: string, days: number) {
 export async function updateSetting(pin: string, key: string, value: string) {
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
+
+    // Only allow writing to user-modifiable settings keys
+    const ALLOWED_SETTINGS_KEYS = [
+        "ai_provider", "ai_model", "ollama_url", "ai_api_key",
+        "youtube_cookies", "ai_auto_analysis", "daily_limit", "discover_cache",
+    ];
+    if (!ALLOWED_SETTINGS_KEYS.includes(key)) {
+        return { success: false, error: `Setting key "${key}" is not modifiable` };
+    }
 
     // Side effect: Write cookies to file if key is youtube_cookies
     if (key === "youtube_cookies") {

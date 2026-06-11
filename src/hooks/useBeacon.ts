@@ -34,13 +34,21 @@ export function useBeacon(isPlaying: boolean) {
         isPlayingRef.current = isPlaying;
     }, [isPlaying]);
 
+    const abortRef = useRef<AbortController | null>(null);
+
     const sendHeartbeat = useCallback(async () => {
         if (!isPlayingRef.current) return;
+
+        // Abort any in-flight request
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
 
         try {
             const res = await fetch("/api/heartbeat", {
                 method: "POST",
                 credentials: "include",
+                signal: controller.signal,
             });
 
             if (res.status === 403) {
@@ -65,6 +73,7 @@ export function useBeacon(isPlaying: boolean) {
                 });
             }
         } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") return;
             console.error("Heartbeat failed:", error);
         }
     }, []);
@@ -89,6 +98,7 @@ export function useBeacon(isPlaying: boolean) {
                 clearInterval(intervalRef.current);
                 intervalRef.current = null;
             }
+            abortRef.current?.abort();
         };
     }, [isPlaying, state.isLocked, sendHeartbeat]);
 

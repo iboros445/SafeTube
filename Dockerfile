@@ -53,5 +53,6 @@ RUN echo "0 3 * * * python3 /app/scripts/cleanup.py" | crontab -u node -
 
 EXPOSE 3000
 
-# Start crond as root, then run the app as the node user
+# Start crond (requires root for daemon startup, but the cron job runs as node user via -u node)
+# Then run the app as the unprivileged node user
 CMD ["sh", "-c", "crond && su-exec node node server.js"]

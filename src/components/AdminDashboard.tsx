@@ -151,6 +151,7 @@ export default function AdminDashboard({
         return <AdminLogin onLogin={(validPin) => {
             setPin(validPin);
             setAuthenticated(true);
+            router.refresh();
         }} isLight={isLight} />;
     }
 

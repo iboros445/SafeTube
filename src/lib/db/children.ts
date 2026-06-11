@@ -16,13 +16,12 @@ export async function getAllChildren(): Promise<Child[]> {
 
 export async function createChild(data: NewChild): Promise<number> {
     await dbReady;
-    await db.insert(children).values(data);
-    // Get the ID of the newly created child
-    const [newChild] = await db
-        .select({ id: children.id })
-        .from(children)
-        .orderBy(desc(children.id))
-        .limit(1);
+    const [newChild] = await db.insert(children).values(data).returning({ id: children.id });
+    if (!newChild) {
+        // Fallback for drivers that don't support returning
+        const [c] = await db.select({ id: children.id }).from(children).orderBy(desc(children.id)).limit(1);
+        return c.id;
+    }
     return newChild.id;
 }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google"; // Leave this import alone? No, just ensuring import is there.
+import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
+import ErrorBoundary from "@/src/components/ErrorBoundary";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,7 +25,7 @@ export default function RootLayout({
             <body
                 className={`${inter.className} min-h-screen bg-safetube-bg text-safetube-text antialiased`}
             >
-                {children}
+                <ErrorBoundary>{children}</ErrorBoundary>
                 <Toaster position="top-right" theme="system" richColors closeButton />
             </body>
         </html>

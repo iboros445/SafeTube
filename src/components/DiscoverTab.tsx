@@ -69,13 +69,20 @@ export default function DiscoverTab({
 
     // Load cached recommendations on mount
     useEffect(() => {
+        const controller = new AbortController();
+        let cancelled = false;
         getCachedRecommendations().then((cached) => {
+            if (cancelled) return;
             if (cached && cached.recommendations.length > 0) {
                 setRecs(cached.recommendations);
                 setUpdatedAt(cached.updatedAt);
             }
             setInitialLoad(false);
         });
+        return () => {
+            cancelled = true;
+            controller.abort();
+        };
     }, []);
 
     const fetchRecs = async () => {

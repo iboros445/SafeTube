@@ -92,6 +92,7 @@ export default function AdminChildrenTab({ profiles: childrenList, pin, isLight 
     const [confirmingPunish, setConfirmingPunish] = useState<number | null>(null); // Kept for future use if needed, though previously unused in view
     const [editingColor, setEditingColor] = useState<number | null>(null);
     const photoInputRef = useRef<HTMLInputElement>(null);
+    const photoTargetChildId = useRef<number | null>(null);
 
     // Watch History State
     const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
@@ -420,7 +421,7 @@ export default function AdminChildrenTab({ profiles: childrenList, pin, isLight 
                             {/* Upload photo */}
                             <button
                                 onClick={() => {
-                                    photoInputRef.current?.setAttribute("data-child-id", String(child.id));
+                                    photoTargetChildId.current = child.id;
                                     photoInputRef.current?.click();
                                 }}
                                 className={`p-2 rounded-lg ${btnSurface} hover:text-purple-400 transition-all`}
@@ -648,9 +649,8 @@ export default function AdminChildrenTab({ profiles: childrenList, pin, isLight 
                 className="hidden"
                 onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    const childIdStr = photoInputRef.current?.getAttribute("data-child-id");
-                    if (!file || !childIdStr) return;
-                    const childId = Number(childIdStr);
+                    const childId = photoTargetChildId.current;
+                    if (!file || childId == null) return;
                     setActionLoading(`photo-${childId}`);
                     const formData = new FormData();
                     formData.append("photo", file);

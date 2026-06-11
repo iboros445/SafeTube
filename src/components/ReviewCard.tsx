@@ -52,16 +52,7 @@ function getPacingIcon(pacing: string): string {
     return "❓";
 }
 
-/** Lightweight inline markdown → HTML (bold, italic, code) */
-function renderMarkdown(text: string): string {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>")
-        .replace(/`(.+?)`/g, '<code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:4px;font-size:0.85em">$1</code>');
-}
+
 
 export default function ReviewCard({
     videoTitle,
@@ -152,10 +143,7 @@ export default function ReviewCard({
 
                     {/* Summary */}
                     <div className={`${surfaceCls} rounded-xl p-3`}>
-                        <p
-                            className={`text-sm ${textPrimary} leading-relaxed`}
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(analysis.summary) }}
-                        />
+                        <p className={`text-sm ${textPrimary} leading-relaxed`}>{analysis.summary}</p>
                     </div>
 
                     {/* Tags */}

@@ -9,41 +9,6 @@ import type {
     AIConfig
 } from "@/src/types";
 
-// ─── AES-256-GCM Encryption for API Keys ────────────────────────────
-// Uses a machine-derived key from hostname + __dirname for deterministic
-// encryption without requiring the user to manage a separate secret.
-const ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const ENCRYPTION_PREFIX = "enc:";
-
-function getDerivedKey(): Buffer {
-    const machineSecret = `safetube-${process.cwd()}-${require("os").hostname()}`;
-    return crypto.scryptSync(machineSecret, "safetube-salt", 32);
-}
-
-export function encryptApiKey(plaintext: string): string {
-    if (!plaintext || plaintext.startsWith(ENCRYPTION_PREFIX)) return plaintext;
-    const key = getDerivedKey();
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-    let encrypted = cipher.update(plaintext, "utf8", "hex");
-    encrypted += cipher.final("hex");
-    const authTag = cipher.getAuthTag().toString("hex");
-    return `${ENCRYPTION_PREFIX}${iv.toString("hex")}:${authTag}:${encrypted}`;
-}
-
-export function decryptApiKey(ciphertext: string): string {
-    if (!ciphertext || !ciphertext.startsWith(ENCRYPTION_PREFIX)) return ciphertext;
-    const key = getDerivedKey();
-    const parts = ciphertext.slice(ENCRYPTION_PREFIX.length).split(":");
-    if (parts.length !== 3) return ciphertext; // malformed, return as-is
-    const [ivHex, authTagHex, encrypted] = parts;
-    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, Buffer.from(ivHex, "hex"));
-    decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
-    let decrypted = decipher.update(encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
-}
-
 // ─── Provider Implementations ────────────────────────────────────────
 
 function createOpenAIService(apiKey: string, model: string): LLMService {

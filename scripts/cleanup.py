@@ -51,18 +51,24 @@ def cleanup():
             conn.close()
             return
 
+        MEDIA_DIR_ABS = os.path.abspath(MEDIA_DIR)
+
         for video_id, local_path, thumb_path in expired:
-            # Delete files
+            # Delete files (with path traversal protection)
             video_file = os.path.join(MEDIA_DIR, local_path) if local_path else None
             thumb_file = os.path.join(MEDIA_DIR, thumb_path) if thumb_path else None
 
-            if video_file and os.path.exists(video_file):
-                os.remove(video_file)
-                print(f"  Deleted: {video_file}")
+            if video_file:
+                resolved = os.path.abspath(video_file)
+                if resolved.startswith(MEDIA_DIR_ABS) and os.path.exists(resolved):
+                    os.remove(resolved)
+                    print(f"  Deleted: {resolved}")
 
-            if thumb_file and os.path.exists(thumb_file):
-                os.remove(thumb_file)
-                print(f"  Deleted: {thumb_file}")
+            if thumb_file:
+                resolved = os.path.abspath(thumb_file)
+                if resolved.startswith(MEDIA_DIR_ABS) and os.path.exists(resolved):
+                    os.remove(resolved)
+                    print(f"  Deleted: {resolved}")
 
             # Remove DB record
             conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))

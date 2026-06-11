@@ -12,9 +12,27 @@ if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+/**
+ * Only allow URLs from known YouTube domains to prevent arbitrary
+ * command execution or SSRF via yt-dlp.
+ */
+function validateYouTubeUrl(url: string): boolean {
+    try {
+        const parsed = new URL(url);
+        const validHosts = ["youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"];
+        return validHosts.includes(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
 // ─── Fetch Video Metadata (no download) ──────────────────────────────
 
 export async function fetchVideoMetadata(url: string): Promise<VideoMetadata> {
+    if (!validateYouTubeUrl(url)) {
+        throw new Error("Invalid URL: only YouTube URLs are allowed.");
+    }
+
     return new Promise((resolve, reject) => {
         const args = [
             "--dump-json",
@@ -63,6 +81,10 @@ export async function fetchVideoMetadata(url: string): Promise<VideoMetadata> {
 // ─── Fetch Auto-Subtitles ────────────────────────────────────────────
 
 export async function fetchAutoSubtitles(url: string): Promise<string> {
+    if (!validateYouTubeUrl(url)) {
+        throw new Error("Invalid URL: only YouTube URLs are allowed.");
+    }
+
     const tempId = `analysis_${Date.now()}`;
     const outputTemplate = path.join(TEMP_DIR, tempId);
 

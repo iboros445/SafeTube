@@ -29,7 +29,7 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
     const playerContainerRef = useRef<HTMLDivElement>(null);
     const lastSaveTimeRef = useRef<number>(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
+    const progressBarRef = useRef<HTMLDivElement>(null);
 
     const beacon = useBeacon(isPlaying);
     const isLocked = beacon.isLocked || initialLocked;
@@ -68,21 +68,22 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
             setSelectedVideo(video);
             setShowPlayOverlay(true);
             setIsPlaying(false);
-            // Seek to saved progress after video loads
-            setTimeout(() => {
-                if (videoRef.current) {
-                    const saved = progressMap[video.id];
-                    if (saved && saved > 0) {
-                        videoRef.current.currentTime = saved;
-                        setCurrentTime(saved);
-                    } else {
-                        setCurrentTime(0);
-                    }
-                }
-            }, 100);
         },
-        [progressMap]
+        []
     );
+
+    const handleLoadedMetadata = useCallback(() => {
+        if (videoRef.current && selectedVideo) {
+            const saved = progressMap[selectedVideo.id];
+            if (saved && saved > 0) {
+                videoRef.current.currentTime = saved;
+            }
+            if (progressBarRef.current && selectedVideo.durationSeconds) {
+                const pct = Math.min(100, ((saved || 0) / selectedVideo.durationSeconds) * 100);
+                progressBarRef.current.style.width = `${pct}%`;
+            }
+        }
+    }, [selectedVideo, progressMap]);
 
     const handlePlayPause = useCallback(() => {
         if (!videoRef.current || beacon.isLocked) return;
@@ -153,16 +154,21 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
 
     const handleTimeUpdate = useCallback(() => {
         if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
+            if (progressBarRef.current && selectedVideo?.durationSeconds) {
+                const pct = Math.min(100, (videoRef.current.currentTime / selectedVideo.durationSeconds) * 100);
+                progressBarRef.current.style.width = `${pct}%`;
+            }
             saveProgress(videoRef.current.currentTime);
         }
-    }, [saveProgress]);
+    }, [saveProgress, selectedVideo?.durationSeconds]);
 
-    // If locked, force pause
-    if (isLocked && isPlaying) {
-        videoRef.current?.pause();
-        setIsPlaying(false);
-    }
+    // If locked, force pause (in useEffect to avoid setState during render)
+    useEffect(() => {
+        if (isLocked && isPlaying) {
+            videoRef.current?.pause();
+            setIsPlaying(false);
+        }
+    }, [isLocked, isPlaying]);
 
     // ── Theme classes ───────────────────────────────────────────────
     const bg = isLight ? "bg-gray-50" : "bg-safetube-bg";
@@ -303,6 +309,7 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                         }}
                         onEnded={handleVideoEnd}
                         onTimeUpdate={handleTimeUpdate}
+                        onLoadedMetadata={handleLoadedMetadata}
                         muted={isMuted}
                         onContextMenu={(e) => e.preventDefault()}
                     >
@@ -334,12 +341,9 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                     {/* Non-seekable Progress Bar */}
                     <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 pointer-events-none">
                         <div 
+                            ref={progressBarRef}
                             className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]"
-                            style={{ 
-                                width: selectedVideo.durationSeconds 
-                                    ? `${Math.min(100, (currentTime / selectedVideo.durationSeconds) * 100)}%` 
-                                    : '0%' 
-                            }}
+                            style={{ width: '0%' }}
                         />
                     </div>
                 </div>

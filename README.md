@@ -97,7 +97,7 @@ The AI report includes:
 6. Toggle **Auto-Analysis on Download** and/or **Video Recommendations**.
 7. Hit **Test Connection** to verify everything works before saving.
 
-API keys are stored **encrypted at rest** using AES-256-GCM with a machine-derived key — they are never stored in plain text.
+API keys are stored **encrypted at rest** using AES-256-GCM with a randomly generated encryption key (stored in `data/.encryption-key`). The key is created automatically on first boot.
 
 ### Running Ollama via Docker (Recommended)
 
@@ -129,7 +129,14 @@ If you already run Ollama directly on your host (not in Docker), set the URL to 
     docker compose up --build -d
     ```
 2.  **Access App**: Open `http://localhost:3000`.
-3.  **Parent Login**: Click **Parent Dashboard** at the bottom. Default PIN: `1234`.
+3.  **Parent Login**: Click **Parent Dashboard** at the bottom. On first boot, a random 6-digit PIN is generated and printed to the Docker logs:
+    ```bash
+    docker logs safetube-app
+    # Look for: ┌──────────────────────────────────────┐
+    #           │  Your initial admin PIN is: XXXXXX   │
+    #           └──────────────────────────────────────┘
+    ```
+    Change this PIN immediately in **Settings → Change PIN**.
 
 ---
 
@@ -141,7 +148,21 @@ SafeTube uses a "Beacon" mechanism. The player sends a heartbeat every 5 seconds
 
 ### PIN Hashing
 
-Admin PINs are secured using **scrypt** hashing with per-user salts. Brute-force protection is built-in with automatic IP rate-limiting.
+Admin PINs are secured using **scrypt** hashing with per-user salts. A random 6-digit PIN is generated on first boot (printed to logs). Brute-force protection is built-in with automatic rate-limiting (5 attempts per minute).
+
+### Session Security
+
+- **Admin sessions** are stored server-side in the database and validated on every request. Session IDs are random UUIDs with 4-hour expiry.
+- **Child sessions** are stored in the database with 24-hour expiry and validated against session ID, not just cookie existence.
+- All session cookies are `HttpOnly`, `SameSite=Strict`, and `Secure` in production.
+
+### Content Security
+
+- **Media files** are served only to authenticated users (child or admin session required).
+- **Path traversal protection** on all file-serving routes using `path.resolve()` validation.
+- **URL validation** ensures only YouTube URLs are passed to `yt-dlp` (prevents SSRF).
+- **CSP headers** with strict `script-src 'self'` policy.
+- **Error Boundaries** prevent component crashes from taking down the entire application.
 
 ---
 

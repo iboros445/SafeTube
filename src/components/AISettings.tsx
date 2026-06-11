@@ -116,7 +116,7 @@ export default function AISettings({
 
         const timeout = setTimeout(fetchModels, 500); // Debounce
         return () => clearTimeout(timeout);
-    }, [provider, ollamaUrl, newApiKey, settings?.apiKeySet]);
+    }, [provider, ollamaUrl, newApiKey, settings?.apiKeySet, model]);
 
     useEffect(() => {
         getAISettings().then((s) => {

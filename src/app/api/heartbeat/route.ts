@@ -4,6 +4,7 @@ import { children, sessions } from "@/src/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const HEARTBEAT_INTERVAL = 5; // seconds
+const MIN_HEARTBEAT_GAP_MS = 4000; // minimum 4 seconds between heartbeats
 
 export async function POST(request: NextRequest) {
     try {
@@ -59,13 +60,28 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Rate limit: skip increment if last heartbeat was too recent
+        const now = new Date();
+        if (child.lastHeartbeatAt) {
+            const lastBeat = new Date(child.lastHeartbeatAt).getTime();
+            if (now.getTime() - lastBeat < MIN_HEARTBEAT_GAP_MS) {
+                // Too soon — return current state without incrementing
+                return NextResponse.json({
+                    ok: true,
+                    usage: currentUsage,
+                    limit: child.dailyLimitSeconds,
+                    remaining: Math.max(0, child.dailyLimitSeconds - currentUsage),
+                });
+            }
+        }
+
         // Increment usage by heartbeat interval
         const newUsage = currentUsage + HEARTBEAT_INTERVAL;
         await db
             .update(children)
             .set({
                 currentUsageSeconds: newUsage,
-                lastHeartbeatAt: new Date(),
+                lastHeartbeatAt: now,
             })
             .where(eq(children.id, child.id));
 
