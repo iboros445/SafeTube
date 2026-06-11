@@ -34,13 +34,13 @@ export function getQueueState(): QueueState {
     };
 }
 
-export function addToQueue(urls: Array<{ url: string; title: string }>): string[] {
+export function addToQueue(urls: Array<{ url: string; title: string, preApprovedAnalysis?: any }>): string[] {
     const ids: string[] = [];
-    for (const { url, title } of urls) {
+    for (const { url, title, preApprovedAnalysis } of urls) {
         // Skip duplicates
         if (queue.some((j) => j.url === url && j.status !== "error")) continue;
         const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        queue.push({ id, url, title, status: "pending" });
+        queue.push({ id, url, title, status: "pending", preApprovedAnalysis });
         ids.push(id);
     }
 
@@ -156,6 +156,20 @@ async function processJob(job: QueueJob) {
 
         // Save to DB
         const finalUrl = result.resolvedUrl || job.url;
+        let aiScore = null;
+        let educationalValue = null;
+        let pacing = null;
+        let educationalTags = null;
+        let isApproved = false;
+
+        if (job.preApprovedAnalysis) {
+             aiScore = job.preApprovedAnalysis.safetyScore;
+             educationalValue = job.preApprovedAnalysis.educationalValue;
+             pacing = job.preApprovedAnalysis.pacing;
+             educationalTags = JSON.stringify(job.preApprovedAnalysis.tags);
+             isApproved = true;
+        }
+
         await db.insert(videos).values({
             title: result.title!,
             youtubeUrl: finalUrl,
@@ -163,10 +177,16 @@ async function processJob(job: QueueJob) {
             thumbnailPath: result.thumbnailFilename || null,
             durationSeconds: result.duration || null,
             createdAt: new Date(),
+            aiScore,
+            educationalValue,
+            pacing,
+            educationalTags,
+            isApproved,
         });
 
         // Post-download: AI Analysis (if enabled)
-        try {
+        if (!job.preApprovedAnalysis) {
+            try {
             // Check if auto-analysis is enabled
             const settingsRows = await db.select().from(settings);
             const settingMap = new Map(settingsRows.map(s => [s.key, s.value]));
@@ -202,8 +222,9 @@ async function processJob(job: QueueJob) {
                     }
                 }
             }
-        } catch (err) {
-            console.error(`[Worker] ❌ Auto-analysis failed: ${(err as Error).message}`);
+            } catch (err) {
+                console.error(`[Worker] ❌ Auto-analysis failed: ${(err as Error).message}`);
+            }
         }
 
         job.status = "done";

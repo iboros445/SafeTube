@@ -5,6 +5,7 @@ export interface QueueJob {
     status: "pending" | "downloading" | "analyzing" | "done" | "error";
     error?: string;
     progress?: number;
+    preApprovedAnalysis?: AnalysisResult;
 }
 
 export interface QueueState {

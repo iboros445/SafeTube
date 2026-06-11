@@ -234,28 +234,9 @@ export async function approveAndDownload(
     const valid = await validateAdminPin(pin);
     if (!valid) return { success: false, error: "Invalid PIN" };
 
-    const result = await downloadVideo(url);
-    if (!result.success) {
-        return { success: false, error: result.error };
-    }
+    addToQueue([{ url, title: url, preApprovedAnalysis: analysis }]);
 
-    await VideosDB.createVideo({
-        title: result.title!,
-        youtubeUrl: url,
-        localPath: result.filename!,
-        thumbnailPath: result.thumbnailFilename || null,
-        durationSeconds: result.duration || null,
-        createdAt: new Date(),
-        aiScore: analysis.safetyScore,
-        educationalValue: analysis.educationalValue,
-        pacing: analysis.pacing,
-        educationalTags: JSON.stringify(analysis.tags),
-        isApproved: true,
-    });
-
-    revalidatePath("/admin");
-    revalidatePath("/child");
-    return { success: true, title: result.title };
+    return { success: true };
 }
 
 export async function dismissVideo(pin: string, url: string) {
