@@ -353,6 +353,10 @@ export default function DownloadManager({
                                                     {job.progress.toFixed(0)}%
                                                 </span>
                                             </div>
+                                        ) : job.status === "analyzing" ? (
+                                            <span className="text-xs text-amber-400 italic">
+                                                AI Review...
+                                            </span>
                                         ) : (
                                             <span className={`text-xs ${textMuted} capitalize flex-shrink-0`}>
                                                 {job.status}
