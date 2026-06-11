@@ -31,15 +31,41 @@ export async function fileExists(filename: string): Promise<boolean> {
     }
 }
 
+/** Allowed image extensions for avatar uploads */
+const AVATAR_ALLOWED_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+
+/**
+ * Asserts that `filePath` resolves to a location inside `directory`.
+ * Throws if a path-traversal attempt is detected.
+ */
+function assertWithinDirectory(directory: string, filePath: string): void {
+    const resolvedDir = path.resolve(directory) + path.sep;
+    const resolvedFile = path.resolve(filePath);
+    if (!resolvedFile.startsWith(resolvedDir)) {
+        throw new Error("Path traversal detected: file path escapes target directory");
+    }
+}
+
 export async function saveAvatar(childId: number, file: File): Promise<string> {
     const avatarsDir = path.join(MEDIA_DIR, "avatars");
     if (!fs.existsSync(avatarsDir)) {
         await fsPromises.mkdir(avatarsDir, { recursive: true });
     }
 
-    const ext = file.name.split(".").pop() || "jpg";
-    const filename = `avatar_${childId}_${Date.now()}.${ext}`;
+    // Strip any directory components from the uploaded filename
+    const safeBasename = path.basename(file.name);
+    const ext = path.extname(safeBasename).toLowerCase();
+
+    // Validate extension against an explicit allowlist
+    if (!AVATAR_ALLOWED_EXTS.has(ext)) {
+        throw new Error(`Avatar upload rejected: extension '${ext}' is not allowed`);
+    }
+
+    const filename = `avatar_${childId}_${Date.now()}${ext}`;
     const filePath = path.join(avatarsDir, filename);
+
+    // Guard: ensure the resolved path stays inside avatarsDir
+    assertWithinDirectory(avatarsDir, filePath);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await fsPromises.writeFile(filePath, buffer);
@@ -47,9 +73,15 @@ export async function saveAvatar(childId: number, file: File): Promise<string> {
     return `avatars/${filename}`;
 }
 
+/** Allowed subtitle extensions */
+const SUBTITLE_ALLOWED_EXTS = new Set([".srt", ".vtt"]);
+
 export async function saveSubtitle(videoId: number, file: File): Promise<{ filename: string; error?: string }> {
-    const ext = path.extname(file.name).toLowerCase();
-    if (ext !== ".srt" && ext !== ".vtt") {
+    // Strip directory components from the client-supplied name before inspecting extension
+    const safeBasename = path.basename(file.name);
+    const ext = path.extname(safeBasename).toLowerCase();
+
+    if (!SUBTITLE_ALLOWED_EXTS.has(ext)) {
         return { filename: "", error: "Invalid file type. Only .srt or .vtt allowed." };
     }
 
@@ -62,6 +94,9 @@ export async function saveSubtitle(videoId: number, file: File): Promise<{ filen
     const basename = `sub_${videoId}_${timestamp}`;
     const originalFilename = `${basename}${ext}`;
     const originalPath = path.join(subtitlesDir, originalFilename);
+
+    // Guard: ensure the resolved path stays inside subtitlesDir
+    assertWithinDirectory(subtitlesDir, originalPath);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await fsPromises.writeFile(originalPath, buffer);
