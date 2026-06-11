@@ -12,6 +12,7 @@ SafeTube is a self-hosted web application designed for parents who want absolute
 - **⏱️ Anti-Cheat Time Tracking**: Heartbeat-based tracking ensures screen time is only deducted during active playback.
 - **📥 Local Storage**: High-speed local playback with no external streaming required.
 - **💬 Subtitle Support**: Automatic conversion of `.srt` to `.vtt` for seamless accessibility.
+- **🤖 AI Content Analysis**: Automatically score video safety, educational value, and pacing before downloading — powered by your choice of AI provider (OpenAI, Anthropic, Google Gemini, or a local Ollama model).
 - **🐳 One-Click Deploy**: Fully dockerized. Node.js, Python, and FFmpeg ready out of the box.
 
 ---
@@ -47,6 +48,77 @@ SafeTube is a self-hosted web application designed for parents who want absolute
 </details>
 
 ---
+
+## 🤖 Intelligence & AI
+
+SafeTube integrates an **optional AI analysis layer** that reviews each video *before* it is downloaded, giving you a structured safety report you can accept or dismiss.
+
+### How It Works
+
+When **AI Auto-Analysis** is enabled, the download workflow changes:
+
+```
+Parent pastes URL  →  yt-dlp fetches metadata & auto-subtitles (no download yet)
+                   →  Transcript is cleaned & sent to your chosen LLM
+                   →  AI returns a structured JSON report
+                   →  You review the report in the dashboard
+                   →  ✅ Approve  →  video downloads and appears in children's library
+                      ❌ Dismiss  →  video is discarded, nothing is downloaded
+```
+
+The AI report includes:
+
+| Field | Description |
+|---|---|
+| **Safety Score** | 1–10 (10 = perfectly safe for young children) |
+| **Educational Value** | Short description, e.g. *"High — teaches basic physics"* |
+| **Pacing** | `Very Slow/Calm` → `Hyper-Stimulating` |
+| **Tags** | Topic labels (e.g. `science`, `animals`, `crafts`) |
+| **Summary** | 2–3 sentence rationale from the model |
+
+### Supported AI Providers
+
+| Provider | Requires API Key | Privacy | Notes |
+|---|---|---|---|
+| **OpenAI** | ✅ Yes | ☁️ Cloud | GPT-4o, GPT-4o-mini, etc. |
+| **Anthropic** | ✅ Yes | ☁️ Cloud | Claude 3.5 Sonnet / Haiku |
+| **Google Gemini** | ✅ Yes | ☁️ Cloud | Gemini 2.0 Flash, 1.5 Pro |
+| **Ollama** (local) | ❌ No | 🏠 100% local | Any model you pull — no data leaves your machine |
+
+> **Privacy tip:** Choose Ollama if you don't want any video content or transcript data sent to third-party cloud APIs. Everything stays on your local network.
+
+### Configuring AI (Admin Dashboard)
+
+1. Open the **Admin Dashboard** → **Settings** → **Intelligence & AI**.
+2. Choose your **Provider**.
+3. Enter your **API Key** (not needed for Ollama).
+4. Select or type a **Model** name (a live list is fetched from the provider's API).
+5. For Ollama, set the **Ollama URL** (default: `http://localhost:11434`).
+6. Toggle **Auto-Analysis on Download** and/or **Video Recommendations**.
+7. Hit **Test Connection** to verify everything works before saving.
+
+API keys are stored **encrypted at rest** using AES-256-GCM with a machine-derived key — they are never stored in plain text.
+
+### Running Ollama via Docker (Recommended)
+
+The included `docker-compose.yml` starts an Ollama container automatically alongside SafeTube. No manual installation needed.
+
+```bash
+# 1. Start everything
+docker compose up --build -d
+
+# 2. Pull a model (run once; persisted in the ollama_models Docker volume)
+docker exec safetube-ollama ollama pull llama3.2
+
+# 3. Open SafeTube → Admin → Settings → Intelligence & AI
+#    Provider: Ollama  |  URL: http://ollama:11434  |  Model: llama3.2
+```
+
+**GPU acceleration (optional):** Uncomment the `deploy → resources` block in `docker-compose.yml` and ensure the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) is installed on your host.
+
+If you already run Ollama directly on your host (not in Docker), set the URL to `http://host.docker.internal:11434` instead.
+
+
 
 ## 🛠️ Quick Start (Docker)
 
