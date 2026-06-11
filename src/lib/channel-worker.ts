@@ -173,6 +173,7 @@ async function processJob(job: QueueJob) {
             const autoAnalysis = settingMap.get("ai_auto_analysis") === "true";
 
             if (autoAnalysis) {
+                job.status = "analyzing";
                 console.log(`[Worker] 🤖 Starting auto-analysis for: ${result.title}`);
                 const { getAIConfig } = await import("@/src/lib/ai-actions");
                 const { analyzeVideo, fetchVideoMetadata, fetchAutoSubtitles } = await import("@/src/lib/analysis-service");

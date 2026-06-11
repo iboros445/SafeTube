@@ -13,6 +13,7 @@ import {
     Check,
     AlertCircle,
     Trash2,
+    Sparkles,
 } from "lucide-react";
 
 // interface PlaylistEntry removed, imported from types
@@ -131,7 +132,7 @@ export default function DownloadManager({
     if (!isOpen) return null;
 
     const selectedCount = entries.filter((e) => e.selected).length;
-    const activeJobs = queueJobs.filter((j) => j.status === "pending" || j.status === "downloading");
+    const activeJobs = queueJobs.filter((j) => j.status === "pending" || j.status === "downloading" || j.status === "analyzing");
     const doneJobs = queueJobs.filter((j) => j.status === "done" || j.status === "error");
 
     return (
@@ -333,6 +334,9 @@ export default function DownloadManager({
                                         )}
                                         {job.status === "downloading" && (
                                             <Loader2 className="w-4 h-4 text-violet-400 animate-spin flex-shrink-0" />
+                                        )}
+                                        {job.status === "analyzing" && (
+                                            <Sparkles className="w-4 h-4 text-amber-400 animate-pulse flex-shrink-0" />
                                         )}
                                         {job.status === "done" && (
                                             <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />

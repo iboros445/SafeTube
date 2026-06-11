@@ -2,7 +2,7 @@ export interface QueueJob {
     id: string;
     url: string;
     title: string;
-    status: "pending" | "downloading" | "done" | "error";
+    status: "pending" | "downloading" | "analyzing" | "done" | "error";
     error?: string;
     progress?: number;
 }
