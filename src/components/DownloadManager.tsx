@@ -155,7 +155,7 @@ export default function DownloadManager({
                     <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs leading-relaxed">
                         <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                            <strong>Heads up:</strong> Bulk downloads skip AI safety analysis. Only bulk download from <strong>trusted sources</strong>.
+                            <strong>Heads up:</strong> Bulk downloads skip AI safety analysis manual approval. Only bulk download from <strong>trusted sources</strong>.
                         </span>
                     </div>
 

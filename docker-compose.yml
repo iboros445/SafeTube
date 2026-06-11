@@ -35,13 +35,13 @@ services:
     # ── GPU support (optional) ────────────────────────────────────────
     # Uncomment the block below if your host has an NVIDIA GPU and the
     # NVIDIA Container Toolkit is installed (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 volumes:
   safetube_data:
