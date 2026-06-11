@@ -337,7 +337,7 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                             className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]"
                             style={{ 
                                 width: selectedVideo.durationSeconds 
-                                    ? \`\${Math.min(100, (currentTime / selectedVideo.durationSeconds) * 100)}%\` 
+                                    ? `${Math.min(100, (currentTime / selectedVideo.durationSeconds) * 100)}%` 
                                     : '0%' 
                             }}
                         />
