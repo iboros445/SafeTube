@@ -13,11 +13,37 @@ import {
 } from "@/src/lib/llm-service";
 import type { AIProvider, AIConfig, AISettings } from "@/src/types";
 
+/**
+ * Validates that a URL is safe to use for Ollama API requests.
+ * Only http/https protocols are allowed. The host must be a valid
+ * hostname or IP address — no credentials, javascript:, file:// etc.
+ */
+function validateOllamaUrl(rawUrl: string): URL {
+    // Ensure a protocol is present so URL() parses correctly
+    const withProtocol = /^https?:\/\//i.test(rawUrl) ? rawUrl : `http://${rawUrl}`;
+    let parsed: URL;
+    try {
+        parsed = new URL(withProtocol);
+    } catch {
+        throw new Error("Invalid Ollama URL");
+    }
+    // Only allow http / https — block file://, ftp://, javascript:, etc.
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error(`Disallowed protocol: ${parsed.protocol}`);
+    }
+    // Block embedded credentials (http://user:pass@host)
+    if (parsed.username || parsed.password) {
+        throw new Error("Ollama URL must not contain credentials");
+    }
+    return parsed;
+}
+
 export async function getOllamaModels(url: string): Promise<string[]> {
     try {
-        // Ensure URL has protocol
-        const baseUrl = url.startsWith("http") ? url : `http://${url}`;
-        const res = await fetch(`${baseUrl}/api/tags`);
+        const parsed = validateOllamaUrl(url);
+        // Reconstruct the URL from the validated, parsed object to prevent injection
+        const safeUrl = `${parsed.protocol}//${parsed.host}`;
+        const res = await fetch(`${safeUrl}/api/tags`, { redirect: "error" });
         if (!res.ok) return [];
         const data = await res.json();
         return data.models?.map((m: any) => m.name) || [];
