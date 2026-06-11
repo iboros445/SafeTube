@@ -28,7 +28,8 @@ RUN apk add --no-cache \
   py3-pip \
   ffmpeg \
   su-exec \
-  && pip3 install --no-cache-dir --break-system-packages yt-dlp
+  deno \
+  && pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp
 
 # ── Copy built app ────────────────────────────────────────────────
 # Ensure public exists in builder to avoid failure

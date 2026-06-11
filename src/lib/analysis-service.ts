@@ -19,7 +19,7 @@ export async function fetchVideoMetadata(url: string): Promise<VideoMetadata> {
         const args = [
             "--dump-json",
             "--no-download",
-            "--js-runtimes", "node",
+            "--js-runtimes", "deno",
             "--remote-components", "ejs:github",
         ];
 
@@ -72,7 +72,7 @@ export async function fetchAutoSubtitles(url: string): Promise<string> {
             "--sub-lang", "en",
             "--sub-format", "vtt",
             "--skip-download",
-            "--js-runtimes", "node",
+            "--js-runtimes", "deno",
             "--remote-components", "ejs:github",
             "-o", `${outputTemplate}.%(ext)s`,
         ];

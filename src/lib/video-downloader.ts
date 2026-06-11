@@ -34,7 +34,7 @@ export async function listPlaylistVideos(
             "--flat-playlist",
             "--dump-json",
             "--no-download",
-            "--js-runtimes", "node",
+            "--js-runtimes", "deno",
             "--remote-components", "ejs:github",
         ];
         
@@ -101,7 +101,7 @@ export async function searchYouTube(
             "--flat-playlist",
             "--dump-json",
             "--no-download",
-            "--js-runtimes", "node",
+            "--js-runtimes", "deno",
             "--remote-components", "ejs:github",
         ];
 
@@ -177,7 +177,7 @@ export async function downloadVideo(
             "--dump-json",
             "--no-download",
             "--js-runtimes",
-            "node",
+            "deno",
             "--remote-components",
             "ejs:github",
         ];
@@ -254,7 +254,7 @@ export async function downloadVideo(
                 "--convert-thumbnails",
                 "jpg",
                 "--js-runtimes",
-                "node",
+                "deno",
                 "--remote-components",
                 "ejs:github",
                 "-o",
