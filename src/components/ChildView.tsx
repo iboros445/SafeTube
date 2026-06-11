@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { Child, Video } from "@/src/db/schema";
 import { useBeacon } from "@/src/hooks/useBeacon";
 import { saveVideoProgress } from "@/src/lib/actions";
-import { ArrowLeft, Volume2, VolumeX, Clock, Film, Play, Pause, Maximize, Minimize } from "lucide-react";
+import { ArrowLeft, Volume2, VolumeX, Clock, Film, Play, Pause, Maximize, Minimize, RotateCcw, RotateCw } from "lucide-react";
 import Avatar from "@/src/components/Avatar";
 
 interface ChildViewProps {
@@ -215,6 +215,36 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                                 <Clock className="w-3.5 h-3.5" />
                                 <span>{formatTime(beacon.remaining)} left</span>
                             </div>
+
+                            {/* Rewind 10s */}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (videoRef.current) {
+                                        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+                                    }
+                                }}
+                                className={`flex items-center gap-1 ${textMuted} hover:${textPrimary} transition-colors`}
+                                title="Rewind 10 seconds"
+                            >
+                                <RotateCcw className="w-5 h-5" />
+                                <span className="text-xs font-semibold">-10s</span>
+                            </button>
+
+                            {/* Forward 10s */}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (videoRef.current) {
+                                        videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
+                                    }
+                                }}
+                                className={`flex items-center gap-1 ${textMuted} hover:${textPrimary} transition-colors`}
+                                title="Skip 10 seconds"
+                            >
+                                <span className="text-xs font-semibold">+10s</span>
+                                <RotateCw className="w-5 h-5" />
+                            </button>
 
                             {/* Mute toggle */}
                             <button
