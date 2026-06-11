@@ -162,9 +162,25 @@ export default function AdminVideosTab({
                     </button>
                 </div>
                 {downloadStatus && (
-                    <p className={`mt-3 text-sm ${textMuted} animate-fade-in`}>
-                        {downloadStatus}
-                    </p>
+                    <div className="mt-3 animate-fade-in">
+                        <p className={`text-sm ${textMuted}`}>
+                            {downloadStatus}
+                        </p>
+                        {downloading && (
+                            <div className="w-full h-1.5 mt-2 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                <div 
+                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 w-1/2 rounded-full" 
+                                    style={{ animation: 'indeterminate 1.5s infinite ease-in-out' }} 
+                                />
+                                <style dangerouslySetInnerHTML={{__html: `
+                                    @keyframes indeterminate {
+                                        0% { transform: translateX(-100%); }
+                                        100% { transform: translateX(200%); }
+                                    }
+                                `}} />
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Search Results */}
