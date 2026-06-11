@@ -56,3 +56,6 @@ media/
 brain/
  
 cookies.txt
+
+# Personal / machine-specific overrides (e.g. GPU docker-compose)
+personal-docker-compose.yaml

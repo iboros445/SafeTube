@@ -12,9 +12,39 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
+      # Pre-fill the Ollama URL so the Settings page auto-populates it.
+      # Override with OLLAMA_HOST env var on the host if Ollama runs elsewhere.
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
     init: true
     restart: unless-stopped
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest   # pin to a specific tag if needed, e.g. ollama/ollama:0.9.0
+    container_name: safetube-ollama
+    # Port 11434 is intentionally NOT exposed on the host.
+    # SafeTube reaches Ollama via the internal Docker network (http://ollama:11434).
+    # On Windows, port 11434 is often already taken by a native Ollama install,
+    # which would cause a "bind: access permissions" error.
+    # To pull models use:  docker exec safetube-ollama ollama pull llama3.2
+    volumes:
+      # Persist downloaded models between restarts
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    # ── GPU support (optional) ────────────────────────────────────────
+    # Uncomment the block below if your host has an NVIDIA GPU and the
+    # NVIDIA Container Toolkit is installed (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
 volumes:
   safetube_data:
+    driver: local
+  ollama_models:
     driver: local
