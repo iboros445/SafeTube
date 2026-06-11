@@ -368,10 +368,18 @@ export async function updateSetting(pin: string, key: string, value: string) {
     // Side effect: Write cookies to file if key is youtube_cookies
     if (key === "youtube_cookies") {
         const cookiePath = path.join(process.cwd(), "cookies.txt");
-        if (!value.trim()) {
-            if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
-        } else {
-            fs.writeFileSync(cookiePath, value);
+        try {
+            if (!value.trim()) {
+                if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
+            } else {
+                fs.writeFileSync(cookiePath, value);
+            }
+        } catch (e) {
+            console.error("[updateSetting] Failed to write cookies.txt:", e);
+            return {
+                success: false,
+                error: "Failed to write cookies file — permission denied. Check file ownership in the container.",
+            };
         }
     }
 

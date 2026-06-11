@@ -42,7 +42,10 @@ COPY --from=builder /app/public* ./public/
 COPY scripts/ ./scripts/
 
 # ── Create data & media directories ───────────────────────────────
-RUN mkdir -p /app/data /app/media && chown -R node:node /app/data /app/media
+RUN mkdir -p /app/data /app/media \
+    && touch /app/cookies.txt \
+    && chown node:node /app/cookies.txt \
+    && chown -R node:node /app/data /app/media
 
 # ── Add cron job for video cleanup (for the node user) ────────────
 RUN echo "0 3 * * * python3 /app/scripts/cleanup.py" | crontab -u node -
