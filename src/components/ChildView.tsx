@@ -29,6 +29,7 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
     const playerContainerRef = useRef<HTMLDivElement>(null);
     const lastSaveTimeRef = useRef<number>(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
 
     const beacon = useBeacon(isPlaying);
     const isLocked = beacon.isLocked || initialLocked;
@@ -73,6 +74,9 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                     const saved = progressMap[video.id];
                     if (saved && saved > 0) {
                         videoRef.current.currentTime = saved;
+                        setCurrentTime(saved);
+                    } else {
+                        setCurrentTime(0);
                     }
                 }
             }, 100);
@@ -149,6 +153,7 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
 
     const handleTimeUpdate = useCallback(() => {
         if (videoRef.current) {
+            setCurrentTime(videoRef.current.currentTime);
             saveProgress(videoRef.current.currentTime);
         }
     }, [saveProgress]);
@@ -325,6 +330,18 @@ export default function ChildView({ child, videos, progressMap, initialLocked = 
                             </div>
                         </div>
                     )}
+
+                    {/* Non-seekable Progress Bar */}
+                    <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 pointer-events-none">
+                        <div 
+                            className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]"
+                            style={{ 
+                                width: selectedVideo.durationSeconds 
+                                    ? \`\${Math.min(100, (currentTime / selectedVideo.durationSeconds) * 100)}%\` 
+                                    : '0%' 
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
         );

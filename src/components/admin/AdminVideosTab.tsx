@@ -126,7 +126,7 @@ export default function AdminVideosTab({
 
                             // Download mode
                             setDownloading(true);
-                            setDownloadStatus("⏳ Processing...");
+                            setDownloadStatus("⏳ Fetching details & AI review...");
                             const result = await downloadVideoAction(pin, videoUrl.trim());
                             
                             if (result.success) {
@@ -158,7 +158,7 @@ export default function AdminVideosTab({
                         ) : (
                             <Download className="w-4 h-4" />
                         )}
-                        {downloading ? "Downloading..." : searching ? "Searching..." : (/^https?:\/\//.test(videoUrl.trim()) || /youtube\.com|youtu\.be/.test(videoUrl.trim()) ? "Download" : videoUrl.trim() ? "Search" : "Download")}
+                        {downloading ? "Processing Video..." : searching ? "Searching..." : (/^https?:\/\//.test(videoUrl.trim()) || /youtube\.com|youtu\.be/.test(videoUrl.trim()) ? "Download" : videoUrl.trim() ? "Search" : "Download")}
                     </button>
                 </div>
                 {downloadStatus && (
