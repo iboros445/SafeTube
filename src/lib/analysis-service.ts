@@ -116,19 +116,35 @@ export async function fetchAutoSubtitles(url: string): Promise<string> {
 // ─── Strip VTT/SRT Markup ────────────────────────────────────────────
 
 function stripVttMarkup(content: string): string {
-    return content
+    // Stage 1: structural cleanup
+    let cleaned = content
         // Remove WEBVTT header and metadata
         .replace(/^WEBVTT\n[\s\S]*?\n\n/, "")
         // Remove SRT sequence numbers
         .replace(/^\d+\n/gm, "")
         // Remove timestamps
         .replace(/\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}.*\n/g, "")
-        // Remove HTML tags
-        .replace(/<[^>]+>/g, "")
         // Remove position/alignment cues
         .replace(/^(align|position|size|line):.*$/gm, "")
         // Collapse multiple newlines
-        .replace(/\n{3,}/g, "\n")
+        .replace(/\n{3,}/g, "\n");
+
+    // Stage 2: iteratively strip HTML tags until none remain.
+    // [^>] is a negated class that matches ANY character (including newlines)
+    // except ">", so multi-line tags like <script\n...> are handled correctly
+    // without needing the ES2018 `s` (dotAll) flag.
+    // Repeating until stable handles adversarially nested structures.
+    let prev: string;
+    do {
+        prev = cleaned;
+        cleaned = cleaned.replace(/<[^>]*>/g, "");
+    } while (cleaned !== prev);
+
+    // Stage 3: strip any residual bare `<` characters (e.g. unclosed `<script`).
+    // This is the final safety net against partial tag injection.
+    cleaned = cleaned.replace(/</g, "");
+
+    return cleaned
         // Remove duplicate lines (common in auto-subs)
         .split("\n")
         .filter((line, i, arr) => line.trim() && (i === 0 || line.trim() !== arr[i - 1]?.trim()))
